@@ -4,38 +4,60 @@ using Estoria.Application.Interfaces;
 using Estoria.Domain.Entities;
 using Estoria.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Estoria.Application.Services;
 
 public class NewsletterService
 {
     private readonly IAppDbContext _db;
+    private readonly IEmailService _email;
+    private readonly ILogger<NewsletterService> _logger;
 
-    public NewsletterService(IAppDbContext db) => _db = db;
+    public NewsletterService(IAppDbContext db, IEmailService email, ILogger<NewsletterService> logger)
+    {
+        _db     = db;
+        _email  = email;
+        _logger = logger;
+    }
 
     public async Task SubscribeAsync(
         SubscribeDto dto, CancellationToken ct = default)
     {
+        var lang = dto.Language ?? Language.En;
+
         var existing = await _db.NewsletterSubscribers
             .FirstOrDefaultAsync(s => s.Email == dto.Email, ct);
 
         if (existing is not null)
         {
             existing.IsActive = true;
-            existing.Language = dto.Language ?? Language.En;
+            existing.Language = lang;
         }
         else
         {
             _db.NewsletterSubscribers.Add(new NewsletterSubscriber
             {
-                Email = dto.Email,
-                Language = dto.Language ?? Language.En,
-                IsActive = true,
+                Email        = dto.Email,
+                Language     = lang,
+                IsActive     = true,
                 SubscribedAt = DateTime.UtcNow
             });
         }
 
         await _db.SaveChangesAsync(ct);
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _email.SendNewsletterWelcomeAsync(dto.Email, lang);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send newsletter welcome email to {Email}", dto.Email);
+            }
+        });
     }
 
     // -------------------------------------------------------------------------

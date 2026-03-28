@@ -1,6 +1,7 @@
 using Estoria.Application.DTOs.Contact;
 using Estoria.Application.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Estoria.Api.Controllers.Public;
 
@@ -13,6 +14,7 @@ public class ContactController : ControllerBase
     public ContactController(ContactService svc) => _svc = svc;
 
     [HttpPost]
+    [EnableRateLimiting("contact")]
     public async Task<IActionResult> Submit(
         [FromBody] CreateContactDto dto,
         CancellationToken ct = default)

@@ -4,14 +4,22 @@ using Estoria.Application.Interfaces;
 using Estoria.Domain.Entities;
 using Estoria.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Estoria.Application.Services;
 
 public class ContactService
 {
     private readonly IAppDbContext _db;
+    private readonly IEmailService _email;
+    private readonly ILogger<ContactService> _logger;
 
-    public ContactService(IAppDbContext db) => _db = db;
+    public ContactService(IAppDbContext db, IEmailService email, ILogger<ContactService> logger)
+    {
+        _db     = db;
+        _email  = email;
+        _logger = logger;
+    }
 
     public async Task<Guid> SubmitAsync(
         CreateContactDto dto, CancellationToken ct = default)
@@ -28,6 +36,20 @@ public class ContactService
 
         _db.ContactMessages.Add(message);
         await _db.SaveChangesAsync(ct);
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _email.SendContactNotificationAsync(
+                    dto.Name, dto.Email, dto.Message, dto.Phone);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send contact notification email for {Email}", dto.Email);
+            }
+        });
+
         return message.Id;
     }
 

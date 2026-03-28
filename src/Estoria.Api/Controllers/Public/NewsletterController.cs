@@ -1,6 +1,7 @@
 using Estoria.Application.DTOs.Newsletter;
 using Estoria.Application.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Estoria.Api.Controllers.Public;
 
@@ -13,6 +14,7 @@ public class NewsletterController : ControllerBase
     public NewsletterController(NewsletterService svc) => _svc = svc;
 
     [HttpPost("subscribe")]
+    [EnableRateLimiting("newsletter")]
     public async Task<IActionResult> Subscribe(
         [FromBody] SubscribeDto dto,
         CancellationToken ct = default)

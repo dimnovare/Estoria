@@ -1,6 +1,8 @@
 using Estoria.Application.DTOs.Team;
+using Estoria.Application.Interfaces;
 using Estoria.Application.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Estoria.Api.Controllers.Admin;
 
@@ -9,9 +11,24 @@ namespace Estoria.Api.Controllers.Admin;
 // TODO: [Authorize(Roles = "Admin")]
 public class AdminTeamController : ControllerBase
 {
-    private readonly TeamService _svc;
+    private static readonly HashSet<string> _allowedExtensions =
+        [".jpg", ".jpeg", ".png", ".webp"];
 
-    public AdminTeamController(TeamService svc) => _svc = svc;
+    private const long MaxBytes = 10 * 1024 * 1024;
+
+    private readonly TeamService _svc;
+    private readonly IAppDbContext _db;
+    private readonly IFileStorageService _storage;
+
+    public AdminTeamController(
+        TeamService svc,
+        IAppDbContext db,
+        IFileStorageService storage)
+    {
+        _svc     = svc;
+        _db      = db;
+        _storage = storage;
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetAll(CancellationToken ct = default)
@@ -50,5 +67,40 @@ public class AdminTeamController : ControllerBase
     {
         await _svc.DeleteAsync(id, ct);
         return NoContent();
+    }
+
+    // ── Photo ─────────────────────────────────────────────────────────────────
+
+    [HttpPost("{id:guid}/photo")]
+    public async Task<IActionResult> UploadPhoto(
+        Guid id,
+        IFormFile file,
+        CancellationToken ct = default)
+    {
+        var member = await _db.TeamMembers
+            .FirstOrDefaultAsync(m => m.Id == id, ct);
+
+        if (member is null) return NotFound();
+
+        if (file is null || file.Length == 0)
+            return BadRequest("No file provided.");
+
+        if (file.Length > MaxBytes)
+            return BadRequest("File exceeds the 10 MB limit.");
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!_allowedExtensions.Contains(ext))
+            return BadRequest($"File type '{ext}' is not allowed.");
+
+        // Delete old photo if present
+        if (!string.IsNullOrWhiteSpace(member.PhotoUrl))
+            await _storage.DeleteAsync(member.PhotoUrl, ct);
+
+        await using var stream = file.OpenReadStream();
+        member.PhotoUrl = await _storage.UploadAsync(
+            stream, file.FileName, file.ContentType, "team", ct);
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { url = member.PhotoUrl });
     }
 }
