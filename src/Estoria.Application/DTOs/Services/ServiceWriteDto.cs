@@ -1,9 +1,11 @@
+using System.ComponentModel.DataAnnotations;
 using Estoria.Domain.Enums;
 
 namespace Estoria.Application.DTOs.Services;
 
 public class ServiceTranslationDto
 {
+    [Required, MaxLength(200)]
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string? PriceInfo { get; set; }

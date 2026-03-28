@@ -1,9 +1,11 @@
+using System.ComponentModel.DataAnnotations;
 using Estoria.Domain.Enums;
 
 namespace Estoria.Application.DTOs.Team;
 
 public class TeamTranslationDto
 {
+    [Required, MaxLength(200)]
     public string Name { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
     public string? Bio { get; set; }

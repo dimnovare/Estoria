@@ -1,9 +1,11 @@
+using System.ComponentModel.DataAnnotations;
 using Estoria.Domain.Enums;
 
 namespace Estoria.Application.DTOs.Blog;
 
 public class BlogTranslationDto
 {
+    [Required, MaxLength(200)]
     public string Title { get; set; } = string.Empty;
     public string? Excerpt { get; set; }
     public string Content { get; set; } = string.Empty;
