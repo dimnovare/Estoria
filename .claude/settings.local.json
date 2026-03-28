@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for f:*)",
+      "Bash(do)",
+      "Bash(echo \"=== $f ===\")",
+      "Read(//c/Users/Dmitri.MARKIT/source/repos/Estoria/**)",
+      "Bash(done)"
+    ]
+  }
+}
