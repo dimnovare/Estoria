@@ -1,3 +1,11 @@
 <Solution>
-  <Project Path="Estoria.Backend/Estoria.Backend.csproj" />
+  <Folder Name="/src/">
+    <Project Path="src/Estoria.Api/Estoria.Api.csproj" />
+    <Project Path="src/Estoria.Application/Estoria.Application.csproj" />
+    <Project Path="src/Estoria.Domain/Estoria.Domain.csproj" />
+    <Project Path="src/Estoria.Infrastructure/Estoria.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Estoria.Tests/Estoria.Tests.csproj" />
+  </Folder>
 </Solution>
