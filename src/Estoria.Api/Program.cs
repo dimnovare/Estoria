@@ -20,8 +20,17 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins").Get<string[]>() ?? ["*"];
+
 builder.Services.AddCors(o => o.AddDefaultPolicy(b =>
-    b.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+{
+    if (allowedOrigins.Contains("*"))
+        b.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+    else
+        b.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader()
+         .AllowCredentials();
+}));
 
 // Allow multipart uploads up to 10 MB
 builder.Services.Configure<FormOptions>(o =>
@@ -49,6 +58,9 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = 429;
 });
 
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>();
+
 builder.Services.AddApplication();
 
 var isDev       = builder.Environment.IsDevelopment();
@@ -63,10 +75,11 @@ var app = builder.Build();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<LanguageMiddleware>();
 
+app.UseSwagger();
+app.UseSwaggerUI();
+
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
     app.UseStaticFiles();
 }
 
@@ -83,5 +96,6 @@ app.UseCors();
 app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.Run();

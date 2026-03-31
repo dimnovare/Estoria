@@ -1,5 +1,6 @@
 using System.Reflection;
 using Estoria.Application.Interfaces;
+using Estoria.Domain.Base;
 using Estoria.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -31,6 +32,16 @@ public class AppDbContext : DbContext, IAppDbContext
 
     public DbSet<NewsletterSubscriber> NewsletterSubscribers => Set<NewsletterSubscriber>();
     public DbSet<ContactMessage> ContactMessages => Set<ContactMessage>();
+
+    public override async Task<int> SaveChangesAsync(CancellationToken ct = default)
+    {
+        foreach (var entry in ChangeTracker.Entries<BaseEntity>()
+            .Where(e => e.State == EntityState.Modified))
+        {
+            entry.Entity.UpdatedAt = DateTime.UtcNow;
+        }
+        return await base.SaveChangesAsync(ct);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
