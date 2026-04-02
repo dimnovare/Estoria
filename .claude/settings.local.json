@@ -9,7 +9,13 @@
       "Bash(dotnet build:*)",
       "Bash(git -C /c/Users/Dmitri.MARKIT/source/repos/Estoria add -A)",
       "Bash(git -C:*)",
-      "Bash(git -C /c/Users/Dmitri.MARKIT/source/repos/Estoria push origin master)"
+      "Bash(git -C /c/Users/Dmitri.MARKIT/source/repos/Estoria push origin master)",
+      "Bash(find /c/Users/Dmitri.MARKIT/source/repos/dimnovare/Estoria -type f \\\\\\(-name *.tsx -o -name *.jsx -o -name *.ts -o -name *.js \\\\\\))",
+      "Read(//c/Users/Dmitri.MARKIT/source/repos/dimnovare//**)",
+      "Read(//c/Users/Dmitri.MARKIT/source/repos//**)",
+      "Bash(npx tsc:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(xargs cat:*)"
     ]
   }
 }
