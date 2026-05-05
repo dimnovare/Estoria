@@ -39,6 +39,9 @@ public static class DependencyInjection
         else
             services.AddScoped<IEmailService, ResendEmailService>();
 
+        // Password hashing — bcrypt, work factor 12 (see BCryptPasswordHasher)
+        services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
+
         return services;
     }
 }

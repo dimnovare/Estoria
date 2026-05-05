@@ -35,6 +35,9 @@ public class AppDbContext : DbContext, IAppDbContext
 
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
 
+    public DbSet<User> Users => Set<User>();
+    public DbSet<UserRoleAssignment> UserRoles => Set<UserRoleAssignment>();
+
     public override async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         foreach (var entry in ChangeTracker.Entries<BaseEntity>()

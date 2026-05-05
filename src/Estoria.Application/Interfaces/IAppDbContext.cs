@@ -30,5 +30,8 @@ public interface IAppDbContext
 
     DbSet<SiteSetting> SiteSettings { get; }
 
+    DbSet<User> Users { get; }
+    DbSet<UserRoleAssignment> UserRoles { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

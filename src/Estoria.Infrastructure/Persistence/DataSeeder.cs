@@ -1,20 +1,34 @@
+using Estoria.Application.Interfaces;
 using Estoria.Domain.Entities;
 using Estoria.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace Estoria.Infrastructure.Persistence;
 
 public class DataSeeder
 {
     private readonly AppDbContext _db;
+    private readonly IPasswordHasher _hasher;
+    private readonly IConfiguration _config;
 
-    public DataSeeder(AppDbContext db) => _db = db;
+    public DataSeeder(AppDbContext db, IPasswordHasher hasher, IConfiguration config)
+    {
+        _db     = db;
+        _hasher = hasher;
+        _config = config;
+    }
 
     public async Task SeedAsync()
     {
         // SiteSettings have their own per-key idempotent guards so they get
         // populated on existing DBs too — must run before the homepage.hero gate.
         await SeedSiteSettingsAsync();
+
+        // Bootstrap admin user — same idempotent guard pattern (only seeds when
+        // no users exist). Runs before the homepage.hero short-circuit so an
+        // existing DB still gets the admin row populated.
+        await SeedBootstrapAdminAsync();
 
         // Guard: use a single lightweight check — if the first seed key already exists, skip all
         if (await _db.PageContents.AnyAsync(p => p.PageKey == "homepage.hero"))
@@ -955,6 +969,64 @@ public class DataSeeder
 
         if (inserted)
             await _db.SaveChangesAsync();
+    }
+
+    // ── User bootstrap ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates the first admin user from Admin:Email / Admin:Password config
+    /// (or ADMIN_EMAIL / ADMIN_PASSWORD env vars) when no users exist.
+    /// </summary>
+    /// <remarks>
+    /// IMPORTANT: appsettings Admin:Email / Admin:Password are bootstrap-only.
+    /// They seed the very first admin row and are otherwise unused after that —
+    /// AuthController.Login authenticates against the Users table. Don't remove
+    /// the keys until we have an "invite first admin" flow that doesn't depend
+    /// on env-var seeding (P2.x).
+    /// </remarks>
+    private async Task SeedBootstrapAdminAsync()
+    {
+        if (await _db.Users.AnyAsync()) return;
+
+        var adminEmail = _config["Admin:Email"]
+            ?? Environment.GetEnvironmentVariable("ADMIN_EMAIL");
+        var adminPassword = _config["Admin:Password"]
+            ?? Environment.GetEnvironmentVariable("ADMIN_PASSWORD");
+
+        if (string.IsNullOrWhiteSpace(adminEmail) || string.IsNullOrWhiteSpace(adminPassword))
+        {
+            Console.WriteLine("[Estoria][Seed] No Admin:Email/Password configured — skipping admin bootstrap.");
+            return;
+        }
+
+        var admin = new User
+        {
+            Email        = adminEmail.Trim().ToLowerInvariant(),
+            PasswordHash = _hasher.Hash(adminPassword),
+            FullName     = "Estoria Admin",
+            IsActive     = true,
+        };
+        admin.RoleAssignments.Add(new UserRoleAssignment { Role = UserRole.Admin });
+        _db.Users.Add(admin);
+
+        await _db.SaveChangesAsync();
+
+        // First-run only — print the credentials so the admin knows where to log in.
+        Console.WriteLine("[Estoria][Seed] Bootstrap admin created:");
+        Console.WriteLine($"[Estoria][Seed]   email: {adminEmail}");
+        Console.WriteLine($"[Estoria][Seed]   password: {adminPassword}");
+
+        // P2.x: surface unlinked TeamMembers so the operator knows to invite them.
+        // We deliberately do NOT auto-create User rows for existing TeamMembers —
+        // there's no reliable password to assign and TeamMember.UserId doesn't
+        // exist yet. Admin will create accounts via the upcoming admin-users UI.
+        var unlinkedTeam = await _db.TeamMembers.CountAsync(tm => tm.IsActive);
+        if (unlinkedTeam > 0)
+        {
+            Console.WriteLine(
+                $"[Estoria][Seed] TODO: Found {unlinkedTeam} active team member(s) " +
+                "without linked Users — create them via admin UI when it lands.");
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

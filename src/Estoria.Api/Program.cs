@@ -181,6 +181,9 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<Estoria.Application.Interfaces.ICurrentUserService, Estoria.Api.Services.CurrentUserService>();
+
 builder.Services.AddApplication();
 
 var isDev       = builder.Environment.IsDevelopment();
@@ -225,8 +228,10 @@ _ = Task.Run(async () =>
     {
         await Task.Delay(3000);
         using var scope = app.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var seeder = new DataSeeder(db);
+        var db     = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var hasher = scope.ServiceProvider.GetRequiredService<Estoria.Application.Interfaces.IPasswordHasher>();
+        var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+        var seeder = new DataSeeder(db, hasher, config);
         await seeder.SeedAsync();
         Console.WriteLine("[Estoria] Background seeding completed");
     }
