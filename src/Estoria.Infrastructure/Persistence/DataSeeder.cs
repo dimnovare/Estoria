@@ -30,6 +30,11 @@ public class DataSeeder
         // existing DB still gets the admin row populated.
         await SeedBootstrapAdminAsync();
 
+        // Birthday template — singleton row + per-language translations. Runs
+        // independently of homepage.hero so existing DBs still pick up the
+        // template after the AddTasksAndBirthday migration.
+        await SeedBirthdayTemplateAsync();
+
         // Guard: use a single lightweight check — if the first seed key already exists, skip all
         if (await _db.PageContents.AnyAsync(p => p.PageKey == "homepage.hero"))
             return;
@@ -969,6 +974,62 @@ public class DataSeeder
 
         if (inserted)
             await _db.SaveChangesAsync();
+    }
+
+    // ── Birthday template ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Seeds the singleton birthday template with EE/EN/RU translations.
+    /// Idempotent: runs only when no template row exists yet, so editors who
+    /// rewrite the copy from the admin UI don't get their changes overwritten.
+    /// </summary>
+    private async Task SeedBirthdayTemplateAsync()
+    {
+        if (await _db.BirthdayTemplates.AnyAsync())
+            return;
+
+        var template = new BirthdayTemplate
+        {
+            Translations = new List<BirthdayTemplateTranslation>
+            {
+                new()
+                {
+                    Language = Language.Et,
+                    Subject  = "Palju õnne sünnipäevaks, {{name}}!",
+                    BodyHtml = """
+                        <p>Lugupeetud {{name}},</p>
+                        <p>Estoria meeskond soovib teile rõõmsat sünnipäeva ja ilusat aastat täis uusi võimalusi.</p>
+                        <p>Kui plaanite uut kodu või kinnisvara investeeringut, oleme alati valmis aitama.</p>
+                        <p>Sooje tervitusi,<br/>Estoria</p>
+                        """,
+                },
+                new()
+                {
+                    Language = Language.En,
+                    Subject  = "Happy Birthday, {{name}}!",
+                    BodyHtml = """
+                        <p>Dear {{name}},</p>
+                        <p>The Estoria team wishes you a wonderful birthday and a year full of new possibilities.</p>
+                        <p>If you're planning a new home or a property investment, we're always glad to help.</p>
+                        <p>Warm regards,<br/>Estoria</p>
+                        """,
+                },
+                new()
+                {
+                    Language = Language.Ru,
+                    Subject  = "С днём рождения, {{name}}!",
+                    BodyHtml = """
+                        <p>Уважаемый(ая) {{name}},</p>
+                        <p>Команда Estoria поздравляет вас с днём рождения и желает прекрасного года, полного новых возможностей.</p>
+                        <p>Если вы планируете покупку нового дома или инвестиции в недвижимость — мы всегда рады помочь.</p>
+                        <p>С наилучшими пожеланиями,<br/>Estoria</p>
+                        """,
+                },
+            },
+        };
+
+        _db.BirthdayTemplates.Add(template);
+        await _db.SaveChangesAsync();
     }
 
     // ── User bootstrap ────────────────────────────────────────────────────────

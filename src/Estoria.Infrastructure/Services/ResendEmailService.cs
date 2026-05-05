@@ -75,6 +75,33 @@ public class ResendEmailService : IEmailService
         await SendAsync(to: email, subject: subject, html: html, ct: ct);
     }
 
+    public async Task SendBirthdayAsync(
+        string toEmail,
+        string toName,
+        Language lang,
+        string? subjectOverride = null,
+        string? bodyOverride = null,
+        CancellationToken ct = default)
+    {
+        var (fallbackSubject, fallbackBody) = lang switch
+        {
+            Language.Et => (
+                "Palju õnne sünnipäevaks!",
+                $"<p>{HtmlEncode(toName)}, soovime teile meeldejäävat sünnipäeva!</p>"),
+            Language.Ru => (
+                "С днём рождения!",
+                $"<p>{HtmlEncode(toName)}, желаем вам прекрасного дня!</p>"),
+            _ => (
+                "Happy Birthday!",
+                $"<p>{HtmlEncode(toName)}, wishing you a wonderful day!</p>"),
+        };
+
+        var subject = !string.IsNullOrWhiteSpace(subjectOverride) ? subjectOverride : fallbackSubject;
+        var body = !string.IsNullOrWhiteSpace(bodyOverride) ? bodyOverride : fallbackBody;
+
+        await SendAsync(to: toEmail, subject: subject, html: body, ct: ct);
+    }
+
     private async Task SendAsync(string to, string subject, string html, CancellationToken ct)
     {
         var client = _httpClientFactory.CreateClient("Resend");

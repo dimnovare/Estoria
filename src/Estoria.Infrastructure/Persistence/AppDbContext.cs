@@ -46,6 +46,10 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Activity> Activities => Set<Activity>();
     public DbSet<ContactNote> ContactNotes => Set<ContactNote>();
 
+    public DbSet<AppTask> Tasks => Set<AppTask>();
+    public DbSet<BirthdayTemplate> BirthdayTemplates => Set<BirthdayTemplate>();
+    public DbSet<BirthdayTemplateTranslation> BirthdayTemplateTranslations => Set<BirthdayTemplateTranslation>();
+
     public override async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         foreach (var entry in ChangeTracker.Entries<BaseEntity>()

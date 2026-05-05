@@ -31,6 +31,10 @@ public static class DependencyInjection
         services.AddScoped<ActivityService>();
         services.AddScoped<ContactNoteService>();
 
+        // CRM extensions: scheduled tasks + birthday automation
+        services.AddScoped<TaskService>();
+        services.AddScoped<BirthdayService>();
+
         return services;
     }
 }

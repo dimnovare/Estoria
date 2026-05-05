@@ -48,6 +48,20 @@ public class ConsoleEmailService : IEmailService
         return Task.CompletedTask;
     }
 
+    public Task SendBirthdayAsync(
+        string toEmail,
+        string toName,
+        Language lang,
+        string? subjectOverride = null,
+        string? bodyOverride = null,
+        CancellationToken ct = default)
+    {
+        var (subject, body) = BuildBirthdayContent(toName, lang, subjectOverride, bodyOverride);
+
+        Log("Birthday", toEmail, subject, body);
+        return Task.CompletedTask;
+    }
+
     // -------------------------------------------------------------------------
     // Helpers — keep payload shape in sync with ResendEmailService so dev logs
     // mirror what would actually go on the wire in prod.
@@ -72,6 +86,28 @@ public class ConsoleEmailService : IEmailService
         <p><strong>Message:</strong></p>
         <p>{HtmlEncode(message).Replace("\n", "<br/>")}</p>
         """;
+
+    private static (string subject, string body) BuildBirthdayContent(
+        string toName, Language lang, string? subjectOverride, string? bodyOverride)
+    {
+        if (!string.IsNullOrWhiteSpace(subjectOverride) && !string.IsNullOrWhiteSpace(bodyOverride))
+            return (subjectOverride, bodyOverride);
+
+        var (subject, html) = lang switch
+        {
+            Language.Et => (
+                "Palju õnne sünnipäevaks!",
+                $"<p>{HtmlEncode(toName)}, soovime teile meeldejäävat sünnipäeva!</p>"),
+            Language.Ru => (
+                "С днём рождения!",
+                $"<p>{HtmlEncode(toName)}, желаем вам прекрасного дня!</p>"),
+            _ => (
+                "Happy Birthday!",
+                $"<p>{HtmlEncode(toName)}, wishing you a wonderful day!</p>"),
+        };
+
+        return (subjectOverride ?? subject, bodyOverride ?? html);
+    }
 
     private static (string subject, string body) BuildNewsletterContent(Language lang)
     {

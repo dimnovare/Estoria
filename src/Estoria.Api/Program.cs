@@ -1,12 +1,15 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Estoria.Api.Configuration;
 using Estoria.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Estoria.Application;
+using Estoria.Application.Services;
 using Estoria.Infrastructure;
 using Estoria.Infrastructure.Persistence;
+using Hangfire;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.RateLimiting;
@@ -250,6 +253,23 @@ app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Hangfire dashboard, gated to authenticated Admin users. Sits *after*
+// UseAuthorization so the JWT principal is on HttpContext.User by the time
+// the filter runs. Anonymous + non-Admin both 401 (Hangfire's default).
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = new[] { new AdminOnlyDashboardAuthorizationFilter() },
+});
+
+// Daily birthday greeting at 08:00 UTC ≈ 10/11 AM Tallinn (depending on DST).
+// Hangfire stores recurring-job definitions in the "hangfire" schema, so this
+// AddOrUpdate is idempotent across restarts and deploys.
+RecurringJob.AddOrUpdate<BirthdayService>(
+    recurringJobId: "daily-birthdays",
+    methodCall: svc => svc.SendBirthdayGreetingsAsync(default),
+    cronExpression: Cron.Daily(8, 0));
+
 app.MapControllers();
 // Simple health endpoint for Railway — never touches the database
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));

@@ -41,5 +41,9 @@ public interface IAppDbContext
     DbSet<Activity> Activities { get; }
     DbSet<ContactNote> ContactNotes { get; }
 
+    DbSet<AppTask> Tasks { get; }
+    DbSet<BirthdayTemplate> BirthdayTemplates { get; }
+    DbSet<BirthdayTemplateTranslation> BirthdayTemplateTranslations { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
