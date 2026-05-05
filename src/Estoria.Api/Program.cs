@@ -91,7 +91,11 @@ using (var scope = app.Services.CreateScope())
     await seeder.SeedAsync();
 }
 
-app.UseHttpsRedirection();
+if (app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
 app.UseCors();
 app.UseRateLimiter();
 app.UseAuthorization();

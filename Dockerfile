@@ -1,5 +1,6 @@
 # ── Build stage ──────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+ARG CACHE_BUST=1
 WORKDIR /src
 
 # Copy project files first for layer-cache-friendly restore
