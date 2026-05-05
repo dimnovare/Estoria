@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Estoria.Application;
 using Estoria.Application.Services;
+using Estoria.Domain.Enums;
 using Estoria.Infrastructure;
 using Estoria.Infrastructure.Persistence;
 using Hangfire;
@@ -269,6 +270,25 @@ RecurringJob.AddOrUpdate<BirthdayService>(
     recurringJobId: "daily-birthdays",
     methodCall: svc => svc.SendBirthdayGreetingsAsync(default),
     cronExpression: Cron.Daily(8, 0));
+
+// Saved-search digests. Three cadences fan out from the same worker; the
+// SiteSetting "savedsearches.auto_send" gates actual email dispatch (default
+// "false") so dev/staging compute matches without spamming.
+RecurringJob.AddOrUpdate<SavedSearchDeliveryService>(
+    recurringJobId: "saved-searches-instant",
+    methodCall: svc => svc.ProcessAsync(SavedSearchFrequency.Instant, default),
+    cronExpression: Cron.MinuteInterval(30));
+
+RecurringJob.AddOrUpdate<SavedSearchDeliveryService>(
+    recurringJobId: "saved-searches-daily",
+    methodCall: svc => svc.ProcessAsync(SavedSearchFrequency.Daily, default),
+    cronExpression: Cron.Daily(9, 0));
+
+RecurringJob.AddOrUpdate<SavedSearchDeliveryService>(
+    recurringJobId: "saved-searches-weekly",
+    methodCall: svc => svc.ProcessAsync(SavedSearchFrequency.Weekly, default),
+    // "0 9 * * MON" — Mondays at 09:00 UTC.
+    cronExpression: Cron.Weekly(DayOfWeek.Monday, 9, 0));
 
 app.MapControllers();
 // Simple health endpoint for Railway — never touches the database

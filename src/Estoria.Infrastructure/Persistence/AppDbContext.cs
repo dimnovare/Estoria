@@ -50,6 +50,9 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<BirthdayTemplate> BirthdayTemplates => Set<BirthdayTemplate>();
     public DbSet<BirthdayTemplateTranslation> BirthdayTemplateTranslations => Set<BirthdayTemplateTranslation>();
 
+    public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
+    public DbSet<PropertyEvent> PropertyEvents => Set<PropertyEvent>();
+
     public override async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         foreach (var entry in ChangeTracker.Entries<BaseEntity>()

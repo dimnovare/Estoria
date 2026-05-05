@@ -35,6 +35,10 @@ public static class DependencyInjection
         services.AddScoped<TaskService>();
         services.AddScoped<BirthdayService>();
 
+        // Saved searches + property history
+        services.AddScoped<SavedSearchService>();
+        services.AddScoped<SavedSearchDeliveryService>();
+
         return services;
     }
 }

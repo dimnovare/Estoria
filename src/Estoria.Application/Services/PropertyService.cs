@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Estoria.Application.Common;
 using Estoria.Application.DTOs.Properties;
 using Estoria.Application.DTOs.Team;
@@ -5,18 +6,79 @@ using Estoria.Application.Interfaces;
 using Estoria.Domain.Entities;
 using Estoria.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Estoria.Application.Services;
 
 public class PropertyService
 {
+    private static readonly JsonSerializerOptions EventJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false,
+    };
+
     private readonly IAppDbContext _db;
     private readonly AuditService _audit;
+    private readonly ICurrentUserService _currentUser;
+    private readonly ILogger<PropertyService> _logger;
 
-    public PropertyService(IAppDbContext db, AuditService audit)
+    public PropertyService(
+        IAppDbContext db,
+        AuditService audit,
+        ICurrentUserService currentUser,
+        ILogger<PropertyService> logger)
     {
-        _db    = db;
-        _audit = audit;
+        _db          = db;
+        _audit       = audit;
+        _currentUser = currentUser;
+        _logger      = logger;
+    }
+
+    // -------------------------------------------------------------------------
+    // PropertyEvent helper
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Append a <see cref="PropertyEvent"/> row. Wrapped in try/catch by
+    /// design — a failed history entry is a degraded feature, not a broken
+    /// save, so the property mutation that triggered the event must still
+    /// succeed even if the event row can't be written. Saves immediately to
+    /// avoid coupling failures with the parent transaction.
+    /// </summary>
+    public async Task LogPropertyEventAsync(
+        Guid propertyId,
+        PropertyEventType type,
+        object? prev,
+        object? next,
+        Guid? userId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            _db.PropertyEvents.Add(new PropertyEvent
+            {
+                PropertyId   = propertyId,
+                Type         = type,
+                PreviousJson = SerializePayload(prev),
+                NewJson      = SerializePayload(next),
+                UserId       = userId,
+            });
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "PROPERTY_EVENT_FAIL propertyId={PropertyId} type={Type} — degraded but property change persisted",
+                propertyId, type);
+        }
+    }
+
+    private static string? SerializePayload(object? payload)
+    {
+        if (payload is null) return null;
+        try { return JsonSerializer.Serialize(payload, EventJsonOptions); }
+        catch { return null; }
     }
 
     // -------------------------------------------------------------------------
@@ -83,6 +145,54 @@ public class PropertyService
             .FirstOrDefaultAsync(p => p.Slug == slug, ct);
 
         return property is null ? null : ToDetailDto(property, lang);
+    }
+
+    /// <summary>
+    /// Returns the most recent <paramref name="limit"/> events for the property,
+    /// newest first. Public-safe: only the event types that make sense for a
+    /// visitor are returned (price/status/featured) — agent and image events
+    /// are filtered out at the DB level so we don't even pull them.
+    /// </summary>
+    public async Task<List<PropertyEventDto>?> GetPublicHistoryAsync(
+        string slug, int limit = 20, CancellationToken ct = default)
+    {
+        var propertyId = await _db.Properties
+            .AsNoTracking()
+            .Where(p => p.Slug == slug)
+            .Select(p => (Guid?)p.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (propertyId is null) return null;
+
+        // Visitor-safe whitelist. Image events would expose URL churn that the
+        // history widget shouldn't display; agent changes are admin context.
+        var publicTypes = new[]
+        {
+            PropertyEventType.Created,
+            PropertyEventType.PriceChanged,
+            PropertyEventType.StatusChanged,
+            PropertyEventType.PublishedFirst,
+            PropertyEventType.Featured,
+            PropertyEventType.Unfeatured,
+        };
+
+        limit = Math.Clamp(limit, 1, 100);
+
+        var rows = await _db.PropertyEvents
+            .AsNoTracking()
+            .Where(e => e.PropertyId == propertyId.Value && publicTypes.Contains(e.Type))
+            .OrderByDescending(e => e.CreatedAt)
+            .Take(limit)
+            .ToListAsync(ct);
+
+        return rows.Select(e => new PropertyEventDto
+        {
+            Id           = e.Id,
+            Type         = e.Type,
+            CreatedAt    = e.CreatedAt,
+            PreviousJson = e.PreviousJson,
+            NewJson      = e.NewJson,
+        }).ToList();
     }
 
     public async Task<List<PropertyListDto>> GetFeaturedAsync(
@@ -202,6 +312,24 @@ public class PropertyService
             details: new { property.Slug, property.PropertyType, property.TransactionType, property.Price },
             ct: ct);
 
+        await LogPropertyEventAsync(
+            property.Id,
+            PropertyEventType.Created,
+            prev: null,
+            next: new
+            {
+                property.Slug,
+                property.PropertyType,
+                property.TransactionType,
+                property.Price,
+                property.Currency,
+                property.Status,
+                property.IsFeatured,
+                property.AgentId,
+            },
+            userId: _currentUser.UserId,
+            ct: ct);
+
         return property.Id;
     }
 
@@ -213,6 +341,14 @@ public class PropertyService
             .Include(p => p.Features)
             .FirstOrDefaultAsync(p => p.Id == id, ct)
             ?? throw new KeyNotFoundException($"Property {id} not found.");
+
+        // Capture before-state once so we can diff after persist and emit
+        // the right PropertyEvent rows. Storing scalars only — Translations
+        // / Features churn isn't part of the public history widget.
+        var prevPrice      = property.Price;
+        var prevAgentId    = property.AgentId;
+        var prevIsFeatured = property.IsFeatured;
+        var prevCurrency   = property.Currency;
 
         var enTitle = dto.Translations.TryGetValue(Language.En, out var enTrans)
             ? enTrans.Title
@@ -268,6 +404,41 @@ public class PropertyService
             entityId: property.Id,
             details: new { property.Slug, property.PropertyType, property.TransactionType, property.Price },
             ct: ct);
+
+        var actorId = _currentUser.UserId;
+
+        if (prevPrice != property.Price)
+        {
+            await LogPropertyEventAsync(
+                property.Id,
+                PropertyEventType.PriceChanged,
+                prev: new { Price = prevPrice, Currency = prevCurrency },
+                next: new { property.Price, property.Currency },
+                userId: actorId,
+                ct: ct);
+        }
+
+        if (prevIsFeatured != property.IsFeatured)
+        {
+            await LogPropertyEventAsync(
+                property.Id,
+                property.IsFeatured ? PropertyEventType.Featured : PropertyEventType.Unfeatured,
+                prev: new { IsFeatured = prevIsFeatured },
+                next: new { property.IsFeatured },
+                userId: actorId,
+                ct: ct);
+        }
+
+        if (prevAgentId != property.AgentId)
+        {
+            await LogPropertyEventAsync(
+                property.Id,
+                PropertyEventType.AgentChanged,
+                prev: new { AgentId = prevAgentId },
+                next: new { property.AgentId },
+                userId: actorId,
+                ct: ct);
+        }
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -275,6 +446,7 @@ public class PropertyService
         var property = await _db.Properties.FindAsync([id], ct)
             ?? throw new KeyNotFoundException($"Property {id} not found.");
 
+        var prevStatus = property.Status;
         property.Status = PropertyStatus.Archived;
         await _db.SaveChangesAsync(ct);
 
@@ -284,6 +456,17 @@ public class PropertyService
             entityId: property.Id,
             details: new { property.Slug },
             ct: ct);
+
+        if (prevStatus != property.Status)
+        {
+            await LogPropertyEventAsync(
+                property.Id,
+                PropertyEventType.StatusChanged,
+                prev: new { Status = prevStatus },
+                next: new { property.Status },
+                userId: _currentUser.UserId,
+                ct: ct);
+        }
     }
 
     // -------------------------------------------------------------------------

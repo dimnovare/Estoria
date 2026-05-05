@@ -62,6 +62,31 @@ public class ConsoleEmailService : IEmailService
         return Task.CompletedTask;
     }
 
+    public Task SendSavedSearchConfirmationAsync(
+        string toEmail,
+        string? searchName,
+        Language lang,
+        string unsubscribeUrl,
+        CancellationToken ct = default)
+    {
+        var (subject, body) = BuildSavedSearchConfirmationContent(searchName, lang, unsubscribeUrl);
+        Log("SavedSearchConfirm", toEmail, subject, body);
+        return Task.CompletedTask;
+    }
+
+    public Task SendSavedSearchDigestAsync(
+        string toEmail,
+        string? searchName,
+        Language lang,
+        IReadOnlyList<SavedSearchDigestItem> matches,
+        string unsubscribeUrl,
+        CancellationToken ct = default)
+    {
+        var (subject, body) = BuildSavedSearchDigestContent(searchName, lang, matches, unsubscribeUrl);
+        Log("SavedSearchDigest", toEmail, subject, body);
+        return Task.CompletedTask;
+    }
+
     // -------------------------------------------------------------------------
     // Helpers — keep payload shape in sync with ResendEmailService so dev logs
     // mirror what would actually go on the wire in prod.
@@ -107,6 +132,54 @@ public class ConsoleEmailService : IEmailService
         };
 
         return (subjectOverride ?? subject, bodyOverride ?? html);
+    }
+
+    private static (string subject, string body) BuildSavedSearchConfirmationContent(
+        string? searchName, Language lang, string unsubscribeUrl)
+    {
+        var label = string.IsNullOrWhiteSpace(searchName) ? "your search" : $"\"{HtmlEncode(searchName)}\"";
+        var (subject, body) = lang switch
+        {
+            Language.Et => (
+                "Otsing salvestatud — Estoria",
+                $"<p>Salvestasime {label} ja saadame teile uusi sobivaid pakkumisi vastavalt sagedusele.</p>" +
+                $"<p><a href=\"{unsubscribeUrl}\">Tühista tellimus</a></p>"),
+            Language.Ru => (
+                "Поиск сохранён — Estoria",
+                $"<p>Мы сохранили {label} и будем присылать вам новые подходящие объекты.</p>" +
+                $"<p><a href=\"{unsubscribeUrl}\">Отписаться</a></p>"),
+            _ => (
+                "Search saved — Estoria",
+                $"<p>We've saved {label} and will email you matching properties on your chosen schedule.</p>" +
+                $"<p><a href=\"{unsubscribeUrl}\">Unsubscribe</a></p>"),
+        };
+        return (subject, body);
+    }
+
+    private static (string subject, string body) BuildSavedSearchDigestContent(
+        string? searchName, Language lang,
+        IReadOnlyList<SavedSearchDigestItem> matches, string unsubscribeUrl)
+    {
+        var label = string.IsNullOrWhiteSpace(searchName) ? "your search" : $"\"{HtmlEncode(searchName)}\"";
+        var items = string.Concat(matches.Select(m =>
+            $"<li><a href=\"{HtmlEncode(m.Url)}\">{HtmlEncode(m.Title)}</a> — {m.Price:N0} {HtmlEncode(m.Currency)} ({HtmlEncode(m.City)})</li>"));
+
+        var (subject, body) = lang switch
+        {
+            Language.Et => (
+                $"Estoria: {matches.Count} uut pakkumist — {label}",
+                $"<p>Uusi sobivaid pakkumisi: {matches.Count}</p><ul>{items}</ul>" +
+                $"<p><a href=\"{unsubscribeUrl}\">Tühista tellimus</a></p>"),
+            Language.Ru => (
+                $"Estoria: {matches.Count} новых объектов — {label}",
+                $"<p>Новых объектов: {matches.Count}</p><ul>{items}</ul>" +
+                $"<p><a href=\"{unsubscribeUrl}\">Отписаться</a></p>"),
+            _ => (
+                $"Estoria: {matches.Count} new matches — {label}",
+                $"<p>New matches found: {matches.Count}</p><ul>{items}</ul>" +
+                $"<p><a href=\"{unsubscribeUrl}\">Unsubscribe</a></p>"),
+        };
+        return (subject, body);
     }
 
     private static (string subject, string body) BuildNewsletterContent(Language lang)

@@ -2,6 +2,7 @@ using Estoria.Application.DTOs.Properties;
 using Estoria.Application.Interfaces;
 using Estoria.Application.Services;
 using Estoria.Domain.Entities;
+using Estoria.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -21,15 +22,18 @@ public class AdminPropertiesController : ControllerBase
     private readonly PropertyService _svc;
     private readonly IAppDbContext _db;
     private readonly IFileStorageService _storage;
+    private readonly ICurrentUserService _currentUser;
 
     public AdminPropertiesController(
         PropertyService svc,
         IAppDbContext db,
-        IFileStorageService storage)
+        IFileStorageService storage,
+        ICurrentUserService currentUser)
     {
-        _svc     = svc;
-        _db      = db;
-        _storage = storage;
+        _svc         = svc;
+        _db          = db;
+        _storage     = storage;
+        _currentUser = currentUser;
     }
 
     [HttpGet]
@@ -122,6 +126,20 @@ public class AdminPropertiesController : ControllerBase
         }
 
         await _db.SaveChangesAsync(ct);
+
+        // Emit a history row per uploaded image. LogPropertyEventAsync swallows
+        // its own failures, so a degraded history doesn't break the upload.
+        foreach (dynamic u in uploaded)
+        {
+            await _svc.LogPropertyEventAsync(
+                id,
+                PropertyEventType.ImageAdded,
+                prev: null,
+                next: new { ImageId = (Guid)u.Id, Url = (string)u.Url, IsCover = (bool)u.IsCover },
+                userId: _currentUser.UserId,
+                ct: ct);
+        }
+
         return Ok(uploaded);
     }
 
@@ -139,6 +157,14 @@ public class AdminPropertiesController : ControllerBase
         await _storage.DeleteAsync(image.Url, ct);
         _db.PropertyImages.Remove(image);
         await _db.SaveChangesAsync(ct);
+
+        await _svc.LogPropertyEventAsync(
+            id,
+            PropertyEventType.ImageRemoved,
+            prev: new { ImageId = image.Id, image.Url },
+            next: null,
+            userId: _currentUser.UserId,
+            ct: ct);
 
         return NoContent();
     }

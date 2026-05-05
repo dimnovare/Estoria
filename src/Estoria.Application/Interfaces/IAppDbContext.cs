@@ -45,5 +45,8 @@ public interface IAppDbContext
     DbSet<BirthdayTemplate> BirthdayTemplates { get; }
     DbSet<BirthdayTemplateTranslation> BirthdayTemplateTranslations { get; }
 
+    DbSet<SavedSearch> SavedSearches { get; }
+    DbSet<PropertyEvent> PropertyEvents { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
