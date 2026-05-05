@@ -11,8 +11,13 @@ namespace Estoria.Application.Services;
 public class PropertyService
 {
     private readonly IAppDbContext _db;
+    private readonly AuditService _audit;
 
-    public PropertyService(IAppDbContext db) => _db = db;
+    public PropertyService(IAppDbContext db, AuditService audit)
+    {
+        _db    = db;
+        _audit = audit;
+    }
 
     // -------------------------------------------------------------------------
     // Public
@@ -189,6 +194,14 @@ public class PropertyService
 
         _db.Properties.Add(property);
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Property.Create",
+            entityType: nameof(Property),
+            entityId: property.Id,
+            details: new { property.Slug, property.PropertyType, property.TransactionType, property.Price },
+            ct: ct);
+
         return property.Id;
     }
 
@@ -248,6 +261,13 @@ public class PropertyService
             });
 
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Property.Update",
+            entityType: nameof(Property),
+            entityId: property.Id,
+            details: new { property.Slug, property.PropertyType, property.TransactionType, property.Price },
+            ct: ct);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -257,6 +277,13 @@ public class PropertyService
 
         property.Status = PropertyStatus.Archived;
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Property.Delete",
+            entityType: nameof(Property),
+            entityId: property.Id,
+            details: new { property.Slug },
+            ct: ct);
     }
 
     // -------------------------------------------------------------------------

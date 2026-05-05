@@ -2,8 +2,8 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Estoria.Application.Interfaces;
+using Estoria.Application.Services;
 using Estoria.Domain.Entities;
-using Estoria.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -18,12 +18,14 @@ public class AuthController : ControllerBase
     private readonly IConfiguration _config;
     private readonly IAppDbContext _db;
     private readonly IPasswordHasher _hasher;
+    private readonly AuditService _audit;
 
-    public AuthController(IConfiguration config, IAppDbContext db, IPasswordHasher hasher)
+    public AuthController(IConfiguration config, IAppDbContext db, IPasswordHasher hasher, AuditService audit)
     {
         _config = config;
         _db     = db;
         _hasher = hasher;
+        _audit  = audit;
     }
 
     public record LoginRequest(string Email, string Password);
@@ -57,11 +59,34 @@ public class AuthController : ControllerBase
             .FirstOrDefaultAsync(u => u.Email.ToLower() == emailNormalized, ct);
 
         if (user is null || !user.IsActive || !_hasher.Verify(req.Password, user.PasswordHash))
+        {
+            // Audit failed attempts so brute-force / credential-stuffing is visible.
+            // ICurrentUserService is anonymous here so the entry records UserId=null
+            // + UserEmail="(system)"; the attempted email lives in details.
+            var reason = user is null
+                ? "user-not-found"
+                : !user.IsActive ? "user-inactive" : "bad-password";
+            await _audit.LogAsync(
+                "Auth.LoginFailed",
+                details: new { attemptedEmail = req.Email, reason },
+                ct: ct);
             return Unauthorized(new { error = "Invalid credentials" });
+        }
 
         // Touch LastLoginAt before issuing the token. AppDbContext.SaveChangesAsync
         // also updates UpdatedAt automatically.
         user.LastLoginAt = DateTime.UtcNow;
+
+        // Successful-login audit — write directly so UserId/Email reflect the user
+        // we just authenticated, even though ICurrentUserService still sees the
+        // unauthenticated request principal.
+        _db.AuditLog.Add(new AuditLogEntry
+        {
+            UserId    = user.Id,
+            UserEmail = user.Email,
+            Action    = "Auth.Login",
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
         await _db.SaveChangesAsync(ct);
 
         var roles = user.RoleAssignments.Select(a => a.Role.ToString()).ToArray();

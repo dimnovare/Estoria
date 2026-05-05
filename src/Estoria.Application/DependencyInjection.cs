@@ -7,6 +7,10 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
+        // AuditService reads HttpContext for the caller IP — Application owns the
+        // dependency since the audit emit happens in service code, not controllers.
+        services.AddHttpContextAccessor();
+
         services.AddScoped<PropertyService>();
         services.AddScoped<BlogService>();
         services.AddScoped<TeamService>();
@@ -17,6 +21,8 @@ public static class DependencyInjection
         services.AddScoped<CareerService>();
         services.AddScoped<SiteSettingService>();
         services.AddScoped<PublicLookupService>();
+        services.AddScoped<AuditService>();
+        services.AddScoped<UserManagementService>();
 
         return services;
     }

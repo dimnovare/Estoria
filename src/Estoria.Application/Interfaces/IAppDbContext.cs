@@ -33,5 +33,7 @@ public interface IAppDbContext
     DbSet<User> Users { get; }
     DbSet<UserRoleAssignment> UserRoles { get; }
 
+    DbSet<AuditLogEntry> AuditLog { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

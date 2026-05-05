@@ -13,12 +13,18 @@ public class ContactService
     private readonly IAppDbContext _db;
     private readonly IEmailService _email;
     private readonly ILogger<ContactService> _logger;
+    private readonly AuditService _audit;
 
-    public ContactService(IAppDbContext db, IEmailService email, ILogger<ContactService> logger)
+    public ContactService(
+        IAppDbContext db,
+        IEmailService email,
+        ILogger<ContactService> logger,
+        AuditService audit)
     {
         _db     = db;
         _email  = email;
         _logger = logger;
+        _audit  = audit;
     }
 
     public async Task<Guid> SubmitAsync(
@@ -36,6 +42,13 @@ public class ContactService
 
         _db.ContactMessages.Add(message);
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Contact.Create",
+            entityType: nameof(ContactMessage),
+            entityId: message.Id,
+            details: new { message.Name, message.Email, message.PropertyId },
+            ct: ct);
 
         _ = Task.Run(async () =>
         {
@@ -90,6 +103,13 @@ public class ContactService
 
         message.Status = status;
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Contact.Update",
+            entityType: nameof(ContactMessage),
+            entityId: message.Id,
+            details: new { Status = status.ToString() },
+            ct: ct);
     }
 
     // -------------------------------------------------------------------------

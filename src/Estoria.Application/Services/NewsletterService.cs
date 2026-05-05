@@ -13,12 +13,18 @@ public class NewsletterService
     private readonly IAppDbContext _db;
     private readonly IEmailService _email;
     private readonly ILogger<NewsletterService> _logger;
+    private readonly AuditService _audit;
 
-    public NewsletterService(IAppDbContext db, IEmailService email, ILogger<NewsletterService> logger)
+    public NewsletterService(
+        IAppDbContext db,
+        IEmailService email,
+        ILogger<NewsletterService> logger,
+        AuditService audit)
     {
         _db     = db;
         _email  = email;
         _logger = logger;
+        _audit  = audit;
     }
 
     public async Task SubscribeAsync(
@@ -46,6 +52,12 @@ public class NewsletterService
         }
 
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Newsletter.Subscribe",
+            entityType: nameof(NewsletterSubscriber),
+            details: new { dto.Email, Language = lang.ToString() },
+            ct: ct);
 
         _ = Task.Run(async () =>
         {
@@ -101,5 +113,12 @@ public class NewsletterService
 
         subscriber.IsActive = false;
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Newsletter.Unsubscribe",
+            entityType: nameof(NewsletterSubscriber),
+            entityId: subscriber.Id,
+            details: new { subscriber.Email },
+            ct: ct);
     }
 }

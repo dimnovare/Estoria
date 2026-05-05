@@ -11,8 +11,13 @@ namespace Estoria.Application.Services;
 public class BlogService
 {
     private readonly IAppDbContext _db;
+    private readonly AuditService _audit;
 
-    public BlogService(IAppDbContext db) => _db = db;
+    public BlogService(IAppDbContext db, AuditService audit)
+    {
+        _db    = db;
+        _audit = audit;
+    }
 
     // -------------------------------------------------------------------------
     // Public
@@ -125,6 +130,14 @@ public class BlogService
 
         _db.BlogPosts.Add(post);
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Blog.Create",
+            entityType: nameof(BlogPost),
+            entityId: post.Id,
+            details: new { post.Slug, post.AuthorId },
+            ct: ct);
+
         return post.Id;
     }
 
@@ -160,6 +173,13 @@ public class BlogService
             });
 
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Blog.Update",
+            entityType: nameof(BlogPost),
+            entityId: post.Id,
+            details: new { post.Slug, post.AuthorId },
+            ct: ct);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -169,6 +189,13 @@ public class BlogService
 
         _db.BlogPosts.Remove(post);
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Blog.Delete",
+            entityType: nameof(BlogPost),
+            entityId: post.Id,
+            details: new { post.Slug },
+            ct: ct);
     }
 
     // -------------------------------------------------------------------------

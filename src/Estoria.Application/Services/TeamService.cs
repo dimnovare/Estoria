@@ -11,8 +11,13 @@ namespace Estoria.Application.Services;
 public class TeamService
 {
     private readonly IAppDbContext _db;
+    private readonly AuditService _audit;
 
-    public TeamService(IAppDbContext db) => _db = db;
+    public TeamService(IAppDbContext db, AuditService audit)
+    {
+        _db    = db;
+        _audit = audit;
+    }
 
     // -------------------------------------------------------------------------
     // Public
@@ -91,6 +96,14 @@ public class TeamService
 
         _db.TeamMembers.Add(member);
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Team.Create",
+            entityType: nameof(TeamMember),
+            entityId: member.Id,
+            details: new { member.Slug, member.Email, enName },
+            ct: ct);
+
         return member.Id;
     }
 
@@ -127,6 +140,13 @@ public class TeamService
             });
 
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Team.Update",
+            entityType: nameof(TeamMember),
+            entityId: member.Id,
+            details: new { member.Slug, member.Email },
+            ct: ct);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -136,6 +156,13 @@ public class TeamService
 
         member.IsActive = false;
         await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Team.Delete",
+            entityType: nameof(TeamMember),
+            entityId: member.Id,
+            details: new { member.Slug },
+            ct: ct);
     }
 
     // -------------------------------------------------------------------------
