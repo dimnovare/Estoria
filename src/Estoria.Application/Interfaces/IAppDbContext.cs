@@ -35,5 +35,11 @@ public interface IAppDbContext
 
     DbSet<AuditLogEntry> AuditLog { get; }
 
+    DbSet<Contact> Contacts { get; }
+    DbSet<Deal> Deals { get; }
+    DbSet<DealParticipant> DealParticipants { get; }
+    DbSet<Activity> Activities { get; }
+    DbSet<ContactNote> ContactNotes { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

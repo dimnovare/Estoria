@@ -40,6 +40,12 @@ public class AppDbContext : DbContext, IAppDbContext
 
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
 
+    public DbSet<Contact> Contacts => Set<Contact>();
+    public DbSet<Deal> Deals => Set<Deal>();
+    public DbSet<DealParticipant> DealParticipants => Set<DealParticipant>();
+    public DbSet<Activity> Activities => Set<Activity>();
+    public DbSet<ContactNote> ContactNotes => Set<ContactNote>();
+
     public override async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         foreach (var entry in ChangeTracker.Entries<BaseEntity>()

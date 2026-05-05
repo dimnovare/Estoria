@@ -1,3 +1,4 @@
+using Estoria.Application.Common;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Estoria.Api.Middleware;
@@ -35,6 +36,7 @@ public class ExceptionHandlingMiddleware
         var (status, title) = ex switch
         {
             KeyNotFoundException  => (StatusCodes.Status404NotFound,            "Not Found"),
+            ForbiddenException    => (StatusCodes.Status403Forbidden,           "Forbidden"),
             ArgumentException     => (StatusCodes.Status400BadRequest,          "Bad Request"),
             _                     => (StatusCodes.Status500InternalServerError, "Internal Server Error")
         };

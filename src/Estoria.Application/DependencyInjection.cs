@@ -16,13 +16,20 @@ public static class DependencyInjection
         services.AddScoped<TeamService>();
         services.AddScoped<OfferedServiceService>();
         services.AddScoped<PageContentService>();
-        services.AddScoped<ContactService>();
+        services.AddScoped<ContactMessageService>();
         services.AddScoped<NewsletterService>();
         services.AddScoped<CareerService>();
         services.AddScoped<SiteSettingService>();
         services.AddScoped<PublicLookupService>();
         services.AddScoped<AuditService>();
         services.AddScoped<UserManagementService>();
+
+        // CRM core
+        services.AddScoped<Common.AuthorizationGuard>();
+        services.AddScoped<ContactService>();
+        services.AddScoped<DealService>();
+        services.AddScoped<ActivityService>();
+        services.AddScoped<ContactNoteService>();
 
         return services;
     }

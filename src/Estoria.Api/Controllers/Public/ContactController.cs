@@ -9,9 +9,9 @@ namespace Estoria.Api.Controllers.Public;
 [Route("api/contact")]
 public class ContactController : ControllerBase
 {
-    private readonly ContactService _svc;
+    private readonly ContactMessageService _svc;
 
-    public ContactController(ContactService svc) => _svc = svc;
+    public ContactController(ContactMessageService svc) => _svc = svc;
 
     [HttpPost]
     [EnableRateLimiting("contact")]
