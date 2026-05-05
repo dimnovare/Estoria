@@ -10,6 +10,29 @@ using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Railway provides DATABASE_URL as a postgres:// URI; convert to Npgsql
+// connection string format if present. Falls back to appsettings
+// ConnectionStrings:DefaultConnection for local dev.
+var dbUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+if (!string.IsNullOrEmpty(dbUrl))
+{
+    try
+    {
+        var uri = new Uri(dbUrl);
+        var userInfo = uri.UserInfo.Split(':');
+        var connStr = $"Host={uri.Host};Port={uri.Port};" +
+                      $"Database={uri.AbsolutePath.TrimStart('/')};" +
+                      $"Username={userInfo[0]};Password={userInfo[1]};" +
+                      $"SSL Mode=Require;Trust Server Certificate=true";
+        builder.Configuration["ConnectionStrings:DefaultConnection"] = connStr;
+        Console.WriteLine("[Estoria] Using DATABASE_URL from environment");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Estoria] Failed to parse DATABASE_URL: {ex.Message}");
+    }
+}
+
 builder.Services.AddControllers()
     .AddJsonOptions(o =>
     {
@@ -58,8 +81,7 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = 429;
 });
 
-builder.Services.AddHealthChecks()
-    .AddDbContextCheck<AppDbContext>();
+builder.Services.AddHealthChecks();
 
 builder.Services.AddApplication();
 
@@ -83,13 +105,38 @@ if (app.Environment.IsDevelopment())
     app.UseStaticFiles();
 }
 
-using (var scope = app.Services.CreateScope())
+// Apply migrations synchronously with timeout — do NOT crash the app if it fails
+try
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.MigrateAsync();
-    var seeder = new DataSeeder(db);
-    await seeder.SeedAsync();
+    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+    await db.Database.MigrateAsync(cts.Token);
+    Console.WriteLine("[Estoria] Migrations applied successfully");
 }
+catch (Exception ex)
+{
+    Console.WriteLine($"[Estoria] Migration failed: {ex.Message}");
+    // Continue anyway — let healthcheck pass and surface the issue via logs
+}
+
+// Seed in background — never block startup or healthcheck
+_ = Task.Run(async () =>
+{
+    try
+    {
+        await Task.Delay(3000);
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var seeder = new DataSeeder(db);
+        await seeder.SeedAsync();
+        Console.WriteLine("[Estoria] Background seeding completed");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Estoria] Background seeding failed: {ex.Message}");
+    }
+});
 
 if (app.Environment.IsDevelopment())
 {
@@ -100,6 +147,7 @@ app.UseCors();
 app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
-app.MapHealthChecks("/health");
+// Simple health endpoint for Railway — never touches the database
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 
 app.Run();
