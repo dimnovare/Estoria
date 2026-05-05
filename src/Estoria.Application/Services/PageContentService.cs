@@ -102,8 +102,16 @@ public class PageContentService
         _db.PageContentTranslations.RemoveRange(content.Translations);
         content.Translations.Clear();
 
+        // Save to avoid PK conflict
+        _db.PageContentTranslations.RemoveRange(content.Translations);
+        await _db.SaveChangesAsync(ct);
+
+        // Add new translations
         foreach (var (lang, trans) in dto.Translations)
-            content.Translations.Add(new PageContentTranslation
+        {
+            if (trans is null) continue;
+
+            _db.PageContentTranslations.Add(new PageContentTranslation
             {
                 PageContentId = content.Id,
                 Language = lang,
@@ -112,6 +120,7 @@ public class PageContentService
                 ImageUrl = trans.ImageUrl,
                 VideoUrl = trans.VideoUrl
             });
+        }
 
         await _db.SaveChangesAsync(ct);
     }

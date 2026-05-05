@@ -21,8 +21,10 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unhandled exception on {Method} {Path}: {Message}",
-                context.Request.Method, context.Request.Path, ex.Message);
+            _logger.LogError(ex, "Unhandled exception: {Message} | Inner: {Inner}",
+                ex.Message,
+                ex.InnerException?.Message ?? "none");
+            Console.WriteLine($"[Estoria] Unhandled exception: {ex}");
 
             await HandleExceptionAsync(context, ex);
         }
