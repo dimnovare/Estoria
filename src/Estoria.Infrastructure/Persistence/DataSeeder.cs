@@ -12,6 +12,10 @@ public class DataSeeder
 
     public async Task SeedAsync()
     {
+        // SiteSettings have their own per-key idempotent guards so they get
+        // populated on existing DBs too — must run before the homepage.hero gate.
+        await SeedSiteSettingsAsync();
+
         // Guard: use a single lightweight check — if the first seed key already exists, skip all
         if (await _db.PageContents.AnyAsync(p => p.PageKey == "homepage.hero"))
             return;
@@ -114,13 +118,13 @@ public class DataSeeder
             PageContent("contact.info", new (Language, string?, string?, string?, string?)[]
             {
                 (Language.En, "Contact Us",
-                    "Estoria Real Estate\nKotzebue 4, Tallinn 10412, Estonia\nPhone: +372 600 1234\nEmail: info@estoria.ee\nOpen Mon–Fri 09:00–18:00, Sat 10:00–15:00",
+                    "Estoria Real Estate\nKotzebue 4, Tallinn 10412, Estonia\nPhone: +372 600 1234\nEmail: info@estoria.estate\nOpen Mon–Fri 09:00–18:00, Sat 10:00–15:00",
                     null, null),
                 (Language.Et, "Võtke meiega ühendust",
-                    "Estoria Kinnisvara\nKotzebue 4, Tallinn 10412, Eesti\nTelefon: +372 600 1234\nE-post: info@estoria.ee\nAvatud E–R 09:00–18:00, L 10:00–15:00",
+                    "Estoria Kinnisvara\nKotzebue 4, Tallinn 10412, Eesti\nTelefon: +372 600 1234\nE-post: info@estoria.estate\nAvatud E–R 09:00–18:00, L 10:00–15:00",
                     null, null),
                 (Language.Ru, "Свяжитесь с нами",
-                    "Estoria Недвижимость\nKotzebue 4, Таллин 10412, Эстония\nТелефон: +372 600 1234\nEmail: info@estoria.ee\nРабочие часы: пн–пт 09:00–18:00, сб 10:00–15:00",
+                    "Estoria Недвижимость\nKotzebue 4, Таллин 10412, Эстония\nТелефон: +372 600 1234\nEmail: info@estoria.estate\nРабочие часы: пн–пт 09:00–18:00, сб 10:00–15:00",
                     null, null),
             }),
         };
@@ -905,6 +909,49 @@ public class DataSeeder
         _db.CareerPostings.AddRange(careers);
 
         await _db.SaveChangesAsync();
+    }
+
+    // ── Site Settings ─────────────────────────────────────────────────────────
+
+    private async Task SeedSiteSettingsAsync()
+    {
+        var defaults = new (string Key, string? Value, SettingValueType Type)[]
+        {
+            // Public
+            ("stats.years_experience",    "8",                                       SettingValueType.Number),
+            ("stats.satisfaction_percent","98",                                      SettingValueType.Number),
+            ("contact.email",             "info@estoria.estate",                     SettingValueType.Text),
+            ("contact.phone",             "+372 600 1234",                           SettingValueType.Text),
+            ("contact.address",           "Kotzebue 4, Tallinn 10412, Estonia",      SettingValueType.Text),
+            ("contact.hours",             "Mon–Fri 09:00–18:00, Sat 10:00–15:00", SettingValueType.Text),
+            ("social.facebook",           "",                                        SettingValueType.Text),
+            ("social.instagram",          "",                                        SettingValueType.Text),
+            ("social.linkedin",           "",                                        SettingValueType.Text),
+
+            // Private (admin-only)
+            ("watermark.enabled",         "true",                                    SettingValueType.Boolean),
+            ("watermark.text",            "ESTORIA",                                 SettingValueType.Text),
+            ("ai.descriptions_enabled",   "false",                                   SettingValueType.Boolean),
+            ("ai.replies_enabled",        "false",                                   SettingValueType.Boolean),
+            ("birthday.auto_send",        "false",                                   SettingValueType.Boolean),
+        };
+
+        var inserted = false;
+        foreach (var (key, value, type) in defaults)
+        {
+            if (await _db.SiteSettings.AnyAsync(s => s.Key == key)) continue;
+
+            _db.SiteSettings.Add(new SiteSetting
+            {
+                Key = key,
+                Value = value,
+                ValueType = type
+            });
+            inserted = true;
+        }
+
+        if (inserted)
+            await _db.SaveChangesAsync();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

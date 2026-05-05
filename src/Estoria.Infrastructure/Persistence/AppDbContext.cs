@@ -33,6 +33,8 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<NewsletterSubscriber> NewsletterSubscribers => Set<NewsletterSubscriber>();
     public DbSet<ContactMessage> ContactMessages => Set<ContactMessage>();
 
+    public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
+
     public override async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         foreach (var entry in ChangeTracker.Entries<BaseEntity>()

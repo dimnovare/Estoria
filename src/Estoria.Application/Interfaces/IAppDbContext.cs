@@ -28,5 +28,7 @@ public interface IAppDbContext
     DbSet<NewsletterSubscriber> NewsletterSubscribers { get; }
     DbSet<ContactMessage> ContactMessages { get; }
 
+    DbSet<SiteSetting> SiteSettings { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
