@@ -16,8 +16,8 @@ public class ConsoleEmailService : IEmailService
         _logger = logger;
 
         // Read the same Resend keys as ResendEmailService so dev logs surface
-        // the actual From/To that prod would use. Empty string when unset is
-        // fine here — dev is single-developer.
+        // the actual From/To that prod would use. A misconfigured value shows
+        // up here instead of three weeks later when prod is finally tested.
         var section = config.GetSection("Resend");
         _fromEmail         = section["FromEmail"]         ?? "";
         _notificationEmail = section["NotificationEmail"] ?? "";
@@ -30,10 +30,10 @@ public class ConsoleEmailService : IEmailService
         string? phone,
         CancellationToken ct = default)
     {
-        _logger.LogInformation(
-            "[DEV EMAIL] Contact notification | From: {From} | To: {To} | Reply-To: {Name} <{Email}> | Phone: {Phone} | Message: {Message}",
-            _fromEmail, _notificationEmail, name, email, phone ?? "(none)", message);
+        var subject = $"New Contact: {name}";
+        var body    = BuildContactBody(name, email, phone, message);
 
+        Log("ContactNotification", _notificationEmail, subject, body);
         return Task.CompletedTask;
     }
 
@@ -42,10 +42,61 @@ public class ConsoleEmailService : IEmailService
         Language lang,
         CancellationToken ct = default)
     {
-        _logger.LogInformation(
-            "[DEV EMAIL] Newsletter welcome | From: {From} | To: {To} | Language: {Language}",
-            _fromEmail, email, lang);
+        var (subject, body) = BuildNewsletterContent(lang);
 
+        Log("NewsletterWelcome", email, subject, body);
         return Task.CompletedTask;
     }
+
+    // -------------------------------------------------------------------------
+    // Helpers — keep payload shape in sync with ResendEmailService so dev logs
+    // mirror what would actually go on the wire in prod.
+    // -------------------------------------------------------------------------
+
+    private void Log(string kind, string to, string subject, string body)
+    {
+        // Single-line, grep-friendly. Same field shape (from=, to=, body=) as
+        // RESEND_FAIL so both services are uniformly searchable.
+        _logger.LogInformation(
+            "[DEV EMAIL] from={From} to={To} subject=\"{Subject}\" kind={Kind} body={Body}",
+            _fromEmail, to, subject, kind, Truncate(body, 200));
+    }
+
+    private static string BuildContactBody(string name, string email, string? phone, string message) =>
+        $"""
+        <h2>New Contact Form Submission</h2>
+        <p><strong>Name:</strong> {HtmlEncode(name)}</p>
+        <p><strong>Email:</strong> {HtmlEncode(email)}</p>
+        <p><strong>Phone:</strong> {HtmlEncode(phone ?? "—")}</p>
+        <hr/>
+        <p><strong>Message:</strong></p>
+        <p>{HtmlEncode(message).Replace("\n", "<br/>")}</p>
+        """;
+
+    private static (string subject, string body) BuildNewsletterContent(Language lang)
+    {
+        var (subject, html) = lang switch
+        {
+            Language.Et => (
+                "Tere tulemast Estoria uudiskirja!",
+                "<p>Täname, et liitusite meie uudiskirjaga. Oleme varsti tagasi parimate kinnisvarapakkumistega!</p>"),
+            Language.Ru => (
+                "Добро пожаловать в рассылку Estoria!",
+                "<p>Благодарим вас за подписку на нашу рассылку. Скоро мы пришлём вам лучшие предложения по недвижимости!</p>"),
+            _ => (
+                "Welcome to Estoria Newsletter!",
+                "<p>Thank you for subscribing to our newsletter. We'll be in touch with the best property listings soon!</p>")
+        };
+
+        return (subject, $"<h2>{HtmlEncode(subject)}</h2>{html}");
+    }
+
+    private static string Truncate(string s, int max)
+    {
+        var oneLine = s.Replace("\r", " ").Replace("\n", " ");
+        return oneLine.Length > max ? oneLine[..max] + "..." : oneLine;
+    }
+
+    private static string HtmlEncode(string text) =>
+        System.Net.WebUtility.HtmlEncode(text);
 }
