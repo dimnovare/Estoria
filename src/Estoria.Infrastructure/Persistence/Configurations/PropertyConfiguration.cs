@@ -57,7 +57,17 @@ public class PropertyImageConfiguration : IEntityTypeConfiguration<PropertyImage
 {
     public void Configure(EntityTypeBuilder<PropertyImage> builder)
     {
-        builder.Property(pi => pi.Url).IsRequired();
+        // Url is no longer strictly required — it's empty during the Pending
+        // window between upload and processing-done. Defaulting to empty
+        // string at the entity level keeps NOT NULL semantics without forcing
+        // callers to populate it before the row is saved.
+        builder.Property(pi => pi.Url).IsRequired().HasDefaultValue(string.Empty);
+        builder.Property(pi => pi.OriginalKey).IsRequired().HasMaxLength(500).HasDefaultValue(string.Empty);
+        builder.Property(pi => pi.ThumbUrl).HasMaxLength(500);
+        builder.Property(pi => pi.MediumUrl).HasMaxLength(500);
+        builder.Property(pi => pi.LargeUrl).HasMaxLength(500);
+        builder.Property(pi => pi.ProcessingError).HasMaxLength(1000);
+
         builder.HasIndex(pi => new { pi.PropertyId, pi.SortOrder });
     }
 }

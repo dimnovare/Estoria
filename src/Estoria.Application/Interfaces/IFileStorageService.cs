@@ -27,6 +27,26 @@ public interface IFileStorageService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Uploads to the public bucket using an explicit object key (no auto-generated
+    /// suffix). Used by the image-processing pipeline so variants can share a
+    /// deterministic prefix with their original (e.g. <c>properties/{id}/{uuid}-thumb.jpg</c>).
+    /// Returns the public URL.
+    /// </summary>
+    Task<string> UploadPublicWithKeyAsync(
+        string key,
+        Stream stream,
+        string contentType,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams an object from the private bucket. Caller is responsible for
+    /// disposing the returned stream. Throws if the key is missing.
+    /// </summary>
+    Task<Stream> GetPrivateStreamAsync(
+        string key,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Generates a time-limited download URL for a private object.
     /// </summary>
     Task<string> GetPresignedUrlAsync(

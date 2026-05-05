@@ -17,5 +17,11 @@ public class PropertyListDto
     public TransactionType TransactionType { get; set; }
     public PropertyStatus Status { get; set; }
     public string? CoverImageUrl { get; set; }
+
+    /// <summary>Cover variant URLs for srcset rendering — null on legacy rows still on a single Url.</summary>
+    public string? CoverThumbUrl { get; set; }
+    public string? CoverMediumUrl { get; set; }
+    public string? CoverLargeUrl { get; set; }
+
     public bool IsFeatured { get; set; }
 }

@@ -49,6 +49,12 @@ public static class DependencyInjection
         // TaskService can schedule jobs without a Hangfire-server reference.
         services.AddScoped<IReminderJobService, ReminderJobService>();
 
+        // Image pipeline. Magick.NET instances are not thread-safe, so the
+        // service is registered Scoped — a single Hangfire run owns its own
+        // MagickImage objects for the lifetime of the request.
+        services.AddScoped<IImageProcessingService, MagickImageProcessingService>();
+        services.AddScoped<IImageProcessingJob, ImageProcessingJob>();
+
         services.AddJobInfrastructure(config);
 
         return services;

@@ -50,6 +50,30 @@ public class R2FileStorageService : IFileStorageService, IDisposable
         return key;
     }
 
+    public async Task<string> UploadPublicWithKeyAsync(
+        string key, Stream stream, string contentType, CancellationToken ct = default)
+    {
+        await PutAsync(_publicBucket, key, stream, contentType, ct);
+        return $"{_publicCdnUrl}/{key}";
+    }
+
+    public async Task<Stream> GetPrivateStreamAsync(string key, CancellationToken ct = default)
+    {
+        // Buffer to MemoryStream so the caller can seek (Magick.NET reads
+        // headers + pixel data in two passes). The S3 response stream is
+        // forward-only, which Magick will reject.
+        var resp = await _client.GetObjectAsync(new GetObjectRequest
+        {
+            BucketName = _privateBucket,
+            Key        = key,
+        }, ct);
+
+        var ms = new MemoryStream();
+        await resp.ResponseStream.CopyToAsync(ms, ct);
+        ms.Position = 0;
+        return ms;
+    }
+
     public Task<string> GetPresignedUrlAsync(
         string key, TimeSpan validFor, CancellationToken ct = default)
     {

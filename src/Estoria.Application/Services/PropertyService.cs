@@ -500,6 +500,7 @@ public class PropertyService
     private static PropertyListDto ToListDto(Property p, Language lang)
     {
         var t = ResolveTranslation(p.Translations, lang);
+        var cover = p.Images.FirstOrDefault();
         return new PropertyListDto
         {
             Id = p.Id,
@@ -514,7 +515,10 @@ public class PropertyService
             PropertyType = p.PropertyType,
             TransactionType = p.TransactionType,
             Status = p.Status,
-            CoverImageUrl = p.Images.FirstOrDefault()?.Url,
+            CoverImageUrl  = cover?.Url,
+            CoverThumbUrl  = cover?.ThumbUrl,
+            CoverMediumUrl = cover?.MediumUrl,
+            CoverLargeUrl  = cover?.LargeUrl,
             IsFeatured = p.IsFeatured
         };
     }
@@ -552,11 +556,16 @@ public class PropertyService
             Features = p.Features.Select(f => f.Feature).ToList(),
             Images = p.Images.Select(i => new PropertyImageDto
             {
-                Id = i.Id,
-                Url = i.Url,
-                AltText = i.AltText,
-                SortOrder = i.SortOrder,
-                IsCover = i.IsCover
+                Id               = i.Id,
+                Url              = i.Url,
+                ThumbUrl         = i.ThumbUrl,
+                MediumUrl        = i.MediumUrl,
+                LargeUrl         = i.LargeUrl,
+                ProcessingStatus = i.ProcessingStatus,
+                ProcessingError  = i.ProcessingError,
+                AltText          = i.AltText,
+                SortOrder        = i.SortOrder,
+                IsCover          = i.IsCover,
             }).ToList(),
             Agent = MapAgent(p.Agent, lang)
         };

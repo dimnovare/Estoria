@@ -3,6 +3,7 @@ using Estoria.Application.Interfaces;
 using Estoria.Application.Services;
 using Estoria.Domain.Entities;
 using Estoria.Domain.Enums;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -23,17 +24,20 @@ public class AdminPropertiesController : ControllerBase
     private readonly IAppDbContext _db;
     private readonly IFileStorageService _storage;
     private readonly ICurrentUserService _currentUser;
+    private readonly IBackgroundJobClient _jobs;
 
     public AdminPropertiesController(
         PropertyService svc,
         IAppDbContext db,
         IFileStorageService storage,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        IBackgroundJobClient jobs)
     {
         _svc         = svc;
         _db          = db;
         _storage     = storage;
         _currentUser = currentUser;
+        _jobs        = jobs;
     }
 
     [HttpGet]
@@ -97,7 +101,7 @@ public class AdminPropertiesController : ControllerBase
             ? property.Images.Max(i => i.SortOrder) + 1
             : 0;
 
-        var uploaded = new List<object>();
+        var uploaded = new List<PropertyImage>();
 
         foreach (var file in files)
         {
@@ -110,37 +114,70 @@ public class AdminPropertiesController : ControllerBase
             if (!_allowedExtensions.Contains(ext))
                 return BadRequest($"File type '{ext}' is not allowed.");
 
+            // Originals land in the PRIVATE bucket; they're never publicly
+            // URL-able. The processing job picks the row up by id and writes
+            // the watermarked variants to the public bucket.
             await using var stream = file.OpenReadStream();
-            var url = await _storage.UploadPublicAsync(stream, file.FileName, file.ContentType, "properties", ct);
+            var originalKey = await _storage.UploadPrivateAsync(
+                stream,
+                file.FileName,
+                file.ContentType,
+                folder: $"properties/originals/{id}",
+                ct);
 
             var image = new PropertyImage
             {
-                PropertyId = id,
-                Url        = url,
-                SortOrder  = nextSort++,
-                IsCover    = property.Images.Count == 0 && nextSort == 1
+                PropertyId       = id,
+                OriginalKey      = originalKey,
+                Url              = string.Empty,    // populated when processing finishes
+                SortOrder        = nextSort++,
+                IsCover          = property.Images.Count == 0 && nextSort == 1,
+                ProcessingStatus = ImageProcessingStatus.Pending,
             };
 
             _db.PropertyImages.Add(image);
-            uploaded.Add(new { image.Id, image.Url, image.SortOrder, image.IsCover });
+            uploaded.Add(image);
         }
 
         await _db.SaveChangesAsync(ct);
 
+        // Enqueue per-row processing. The job is idempotent and survives
+        // reprocessing — a failed run flips the row to Failed without
+        // throwing back into Hangfire's retry loop.
+        foreach (var image in uploaded)
+        {
+            _jobs.Enqueue<IImageProcessingJob>(j => j.ProcessAsync(image.Id));
+        }
+
         // Emit a history row per uploaded image. LogPropertyEventAsync swallows
         // its own failures, so a degraded history doesn't break the upload.
-        foreach (dynamic u in uploaded)
+        foreach (var image in uploaded)
         {
             await _svc.LogPropertyEventAsync(
                 id,
                 PropertyEventType.ImageAdded,
                 prev: null,
-                next: new { ImageId = (Guid)u.Id, Url = (string)u.Url, IsCover = (bool)u.IsCover },
+                next: new { ImageId = image.Id, image.OriginalKey, image.IsCover },
                 userId: _currentUser.UserId,
                 ct: ct);
         }
 
-        return Ok(uploaded);
+        // Return enough for the admin UI to render Pending placeholders. The
+        // variant URLs come back null until the Hangfire run completes; the
+        // frontend polls the property record to flip the state.
+        var payload = uploaded.Select(image => new
+        {
+            image.Id,
+            image.SortOrder,
+            image.IsCover,
+            image.ProcessingStatus,
+            ThumbUrl  = (string?)null,
+            MediumUrl = (string?)null,
+            LargeUrl  = (string?)null,
+            Url       = (string?)null,
+        });
+
+        return Ok(payload);
     }
 
     [HttpDelete("{id:guid}/images/{imageId:guid}")]
@@ -154,14 +191,29 @@ public class AdminPropertiesController : ControllerBase
 
         if (image is null) return NotFound();
 
-        await _storage.DeleteAsync(image.Url, ct);
+        // Best-effort cleanup of every URL/key we know about. Failures here
+        // shouldn't block the row removal — orphaned objects are recoverable
+        // (cron sweep, manual cleanup) but a stuck row blocks the UI.
+        foreach (var url in new[] { image.Url, image.ThumbUrl, image.MediumUrl, image.LargeUrl })
+        {
+            if (!string.IsNullOrWhiteSpace(url))
+            {
+                try { await _storage.DeleteAsync(url, ct); } catch { /* see comment above */ }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(image.OriginalKey))
+        {
+            try { await _storage.DeletePrivateAsync(image.OriginalKey, ct); } catch { /* see comment above */ }
+        }
+
         _db.PropertyImages.Remove(image);
         await _db.SaveChangesAsync(ct);
 
         await _svc.LogPropertyEventAsync(
             id,
             PropertyEventType.ImageRemoved,
-            prev: new { ImageId = image.Id, image.Url },
+            prev: new { ImageId = image.Id, image.Url, image.OriginalKey },
             next: null,
             userId: _currentUser.UserId,
             ct: ct);

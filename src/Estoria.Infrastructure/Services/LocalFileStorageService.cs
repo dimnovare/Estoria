@@ -33,6 +33,34 @@ public class LocalFileStorageService : IFileStorageService
         return key;
     }
 
+    public async Task<string> UploadPublicWithKeyAsync(
+        string key, Stream stream, string contentType, CancellationToken ct = default)
+    {
+        // Public-bucket equivalent: drop the file under wwwroot at the exact
+        // path the prod CDN would serve. UploadPublicAsync auto-generates a
+        // key; this variant lets the image pipeline place variants at a known
+        // deterministic prefix.
+        var relPath = $"/{key}";
+        var fullPath = Path.Combine(_wwwRootPath, NormalizePath(key));
+
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        await WriteAsync(stream, fullPath, ct);
+
+        return relPath;
+    }
+
+    public Task<Stream> GetPrivateStreamAsync(string key, CancellationToken ct = default)
+    {
+        var fullPath = Path.Combine(_wwwRootPath, PrivateRoot, NormalizePath(key));
+        if (!File.Exists(fullPath))
+            throw new FileNotFoundException($"Private file not found: {key}", fullPath);
+
+        // Read into memory so the caller can seek freely. Property images are
+        // <= 10 MB by request limit, so this is fine.
+        var bytes = File.ReadAllBytes(fullPath);
+        return Task.FromResult<Stream>(new MemoryStream(bytes));
+    }
+
     public Task<string> GetPresignedUrlAsync(
         string key, TimeSpan validFor, CancellationToken ct = default)
     {

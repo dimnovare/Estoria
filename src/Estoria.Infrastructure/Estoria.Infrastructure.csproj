@@ -10,6 +10,7 @@
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="Hangfire.AspNetCore" Version="1.8.*" />
     <PackageReference Include="Hangfire.PostgreSql" Version="1.20.*" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.*">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
