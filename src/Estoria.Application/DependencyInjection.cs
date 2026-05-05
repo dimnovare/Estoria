@@ -16,6 +16,7 @@ public static class DependencyInjection
         services.AddScoped<NewsletterService>();
         services.AddScoped<CareerService>();
         services.AddScoped<SiteSettingService>();
+        services.AddScoped<PublicLookupService>();
 
         return services;
     }
