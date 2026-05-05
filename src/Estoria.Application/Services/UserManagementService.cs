@@ -191,6 +191,8 @@ public class UserManagementService
         Email       = u.Email,
         FullName    = u.FullName,
         Roles       = u.RoleAssignments.Select(a => a.Role.ToString()).ToArray(),
+        PhotoUrl    = u.PhotoUrl,
+        Languages   = u.Languages.ToArray(),
         IsActive    = u.IsActive,
         LastLoginAt = u.LastLoginAt,
         CreatedAt   = u.CreatedAt,

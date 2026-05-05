@@ -57,6 +57,12 @@ public class AppTaskWriteDto
     public string? Recurrence { get; set; }
 }
 
+public class SetTaskStatusDto
+{
+    [Required]
+    public AppTaskStatus Status { get; set; }
+}
+
 public class RescheduleDto
 {
     [Required]

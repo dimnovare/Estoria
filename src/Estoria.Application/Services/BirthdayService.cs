@@ -80,7 +80,7 @@ public class BirthdayService
         foreach (var c in candidates)
         {
             var dob = c.DateOfBirth!.Value;
-            var daysUntil = DaysUntilNext(today, dob);
+            var (daysUntil, nextBirthday) = ComputeNext(today, dob);
             if (daysUntil > days) continue;
 
             results.Add(new UpcomingBirthdayDto
@@ -92,6 +92,8 @@ public class BirthdayService
                 PreferredLanguage = c.PreferredLanguage,
                 ConsentMarketing  = c.ConsentMarketing,
                 DaysUntil         = daysUntil,
+                NextBirthday      = nextBirthday,
+                TurningAge        = nextBirthday.Year - dob.Year,
             });
         }
 
@@ -202,28 +204,131 @@ public class BirthdayService
         };
     }
 
+    /// <summary>
+    /// Send-now for a single contact. Reuses the same eligibility rules as
+    /// the bulk path (consent, valid email, DOB known) so admins can't ship
+    /// a greeting to a contact who hasn't opted in.
+    /// </summary>
+    public async Task<BirthdaySendResultDto> SendOneAsync(Guid contactId, CancellationToken ct = default)
+    {
+        var autoSend = await _settings.GetBoolAsync("birthday.auto_send", false, ct);
+
+        var contact = await _db.Contacts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == contactId, ct);
+
+        if (contact is null
+            || contact.DateOfBirth is null
+            || string.IsNullOrWhiteSpace(contact.Email)
+            || !contact.ConsentMarketing)
+        {
+            return new BirthdaySendResultDto
+            {
+                Eligible        = 0,
+                Sent            = 0,
+                Skipped         = 1,
+                AutoSendEnabled = autoSend,
+            };
+        }
+
+        if (!autoSend)
+        {
+            _logger.LogInformation(
+                "BIRTHDAY_DRYRUN_ONE contactId={ContactId} (auto-send disabled)",
+                contactId);
+            return new BirthdaySendResultDto
+            {
+                Eligible        = 1,
+                Sent            = 0,
+                Skipped         = 0,
+                AutoSendEnabled = false,
+            };
+        }
+
+        var template = await LoadTemplateAsync(ct);
+        var rendered = RenderForContact(template, contact);
+
+        try
+        {
+            await _email.SendBirthdayAsync(
+                toEmail:         contact.Email!,
+                toName:          contact.FullName,
+                lang:            contact.PreferredLanguage,
+                subjectOverride: rendered?.Subject,
+                bodyOverride:    rendered?.BodyHtml,
+                ct:              ct);
+
+            await _audit.LogAsync(
+                "Birthday.SendOne",
+                entityType: nameof(Contact),
+                entityId: contact.Id,
+                details: new { contact.Email, contact.PreferredLanguage },
+                ct: ct);
+
+            return new BirthdaySendResultDto
+            {
+                Eligible        = 1,
+                Sent            = 1,
+                Skipped         = 0,
+                AutoSendEnabled = true,
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "BIRTHDAY_SEND_ONE_FAIL contactId={ContactId} email={Email}",
+                contact.Id, contact.Email);
+            return new BirthdaySendResultDto
+            {
+                Eligible        = 1,
+                Sent            = 0,
+                Skipped         = 1,
+                AutoSendEnabled = true,
+            };
+        }
+    }
+
     // ── Template management ───────────────────────────────────────────────────
 
-    public async Task<BirthdayTemplateDto?> GetTemplateAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Always returns three rows (one per <see cref="Language"/> value),
+    /// filling empty strings for languages the editor hasn't customized.
+    /// Lets the frontend bind a tab per language without conditional logic.
+    /// </summary>
+    public async Task<List<BirthdayTemplateTranslationDto>> GetTranslationsAsync(CancellationToken ct = default)
     {
         var tpl = await _db.BirthdayTemplates
             .AsNoTracking()
             .Include(t => t.Translations)
             .FirstOrDefaultAsync(ct);
 
-        return tpl is null ? null : new BirthdayTemplateDto
-        {
-            Id           = tpl.Id,
-            Translations = tpl.Translations.Select(t => new BirthdayTemplateTranslationDto
+        var existing = tpl?.Translations
+            .ToDictionary(t => t.Language, t => t)
+            ?? new Dictionary<Language, BirthdayTemplateTranslation>();
+
+        var langs = new[] { Language.Et, Language.En, Language.Ru };
+        return langs.Select(lang => existing.TryGetValue(lang, out var t)
+            ? new BirthdayTemplateTranslationDto
             {
-                Language = t.Language,
+                Language = lang,
                 Subject  = t.Subject,
                 BodyHtml = t.BodyHtml,
-            }).ToList(),
-        };
+            }
+            : new BirthdayTemplateTranslationDto
+            {
+                Language = lang,
+                Subject  = string.Empty,
+                BodyHtml = string.Empty,
+            }).ToList();
     }
 
-    public async Task UpsertTemplateAsync(BirthdayTemplateUpsertDto dto, CancellationToken ct = default)
+    /// <summary>
+    /// Single-language upsert. Creates the singleton template row on first
+    /// call so editors don't need to seed three entries before seeing any
+    /// effect.
+    /// </summary>
+    public async Task UpsertTranslationAsync(
+        Language language, string subject, string bodyHtml, CancellationToken ct = default)
     {
         var tpl = await _db.BirthdayTemplates
             .Include(t => t.Translations)
@@ -233,22 +338,24 @@ public class BirthdayService
         {
             tpl = new BirthdayTemplate();
             _db.BirthdayTemplates.Add(tpl);
+            await _db.SaveChangesAsync(ct);
         }
 
-        // Replace-on-write semantics — translations are a small, fully-known
-        // set. Easier than diffing for this many languages.
-        foreach (var existing in tpl.Translations.ToList())
-            _db.BirthdayTemplateTranslations.Remove(existing);
-
-        foreach (var t in dto.Translations)
+        var existing = tpl.Translations.FirstOrDefault(x => x.Language == language);
+        if (existing is null)
         {
             tpl.Translations.Add(new BirthdayTemplateTranslation
             {
                 BirthdayTemplateId = tpl.Id,
-                Language           = t.Language,
-                Subject            = t.Subject,
-                BodyHtml           = t.BodyHtml,
+                Language           = language,
+                Subject            = subject ?? string.Empty,
+                BodyHtml           = bodyHtml ?? string.Empty,
             });
+        }
+        else
+        {
+            existing.Subject  = subject ?? string.Empty;
+            existing.BodyHtml = bodyHtml ?? string.Empty;
         }
 
         await _db.SaveChangesAsync(ct);
@@ -257,7 +364,7 @@ public class BirthdayService
             "Birthday.UpdateTemplate",
             entityType: nameof(BirthdayTemplate),
             entityId: tpl.Id,
-            details: new { LanguageCount = dto.Translations.Count },
+            details: new { Language = language.ToString() },
             ct: ct);
     }
 
@@ -302,14 +409,17 @@ public class BirthdayService
         return (subject, body);
     }
 
-    private static int DaysUntilNext(DateTime today, DateOnly dob)
+    /// <summary>
+    /// Computes the next anniversary date (this year or next) plus days until.
+    /// Feb-29 birthdays clamp to the last valid day of the target month.
+    /// </summary>
+    private static (int DaysUntil, DateOnly NextBirthday) ComputeNext(DateTime today, DateOnly dob)
     {
-        // Compute the next anniversary year. Avoid Feb-29 edge case by clamping
-        // the day to the last valid day in the target month.
-        var year = today.Year;
+        var year      = today.Year;
         var nextMonth = dob.Month;
         var nextDay   = Math.Min(dob.Day, DateTime.DaysInMonth(year, nextMonth));
         var thisYearAnniv = new DateTime(year, nextMonth, nextDay, 0, 0, 0, DateTimeKind.Utc);
+
         if (thisYearAnniv < today)
         {
             year++;
@@ -317,6 +427,7 @@ public class BirthdayService
             thisYearAnniv = new DateTime(year, nextMonth, nextDay, 0, 0, 0, DateTimeKind.Utc);
         }
 
-        return (int)(thisYearAnniv - today).TotalDays;
+        var daysUntil = (int)(thisYearAnniv - today).TotalDays;
+        return (daysUntil, DateOnly.FromDateTime(thisYearAnniv));
     }
 }

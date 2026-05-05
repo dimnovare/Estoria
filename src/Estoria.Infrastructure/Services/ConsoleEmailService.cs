@@ -87,6 +87,20 @@ public class ConsoleEmailService : IEmailService
         return Task.CompletedTask;
     }
 
+    public Task<bool> SendNewsletterCampaignAsync(
+        string toEmail,
+        Language lang,
+        string subject,
+        string bodyHtml,
+        string unsubscribeToken,
+        CancellationToken ct = default)
+    {
+        // Dev-only: log and return true. Production path lives in
+        // ResendEmailService where actual delivery happens.
+        Log("NewsletterCampaign", toEmail, subject, bodyHtml);
+        return Task.FromResult(true);
+    }
+
     // -------------------------------------------------------------------------
     // Helpers — keep payload shape in sync with ResendEmailService so dev logs
     // mirror what would actually go on the wire in prod.

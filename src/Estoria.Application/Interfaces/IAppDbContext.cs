@@ -26,6 +26,7 @@ public interface IAppDbContext
     DbSet<CareerPostingTranslation> CareerPostingTranslations { get; }
 
     DbSet<NewsletterSubscriber> NewsletterSubscribers { get; }
+    DbSet<NewsletterCampaign> NewsletterCampaigns { get; }
     DbSet<ContactMessage> ContactMessages { get; }
 
     DbSet<SiteSetting> SiteSettings { get; }

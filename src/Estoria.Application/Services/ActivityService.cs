@@ -2,6 +2,7 @@ using Estoria.Application.Common;
 using Estoria.Application.DTOs.CRM.Activities;
 using Estoria.Application.Interfaces;
 using Estoria.Domain.Entities;
+using Estoria.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace Estoria.Application.Services;
@@ -19,17 +20,58 @@ public class ActivityService
         _authz = authz;
     }
 
-    public async Task<List<ActivityDto>> GetListAsync(
-        Guid? dealId, Guid? contactId, Guid? userId, CancellationToken ct = default)
+    /// <summary>
+    /// Filter-rich list. The new /admin/activities page passes type/user/date
+    /// filters plus a free-text search across Title and Body; the legacy
+    /// by-deal / by-contact callers still hit the same endpoint with the
+    /// scoped Guids and ignore everything else.
+    /// </summary>
+    public async Task<PagedResult<ActivityDto>> GetListAsync(
+        Guid? dealId             = null,
+        Guid? contactId          = null,
+        Guid? propertyId         = null,
+        Guid? userId             = null,
+        ActivityType? type       = null,
+        DateTime? occurredAfter  = null,
+        DateTime? occurredBefore = null,
+        string? search           = null,
+        int page                 = 1,
+        int pageSize             = 50,
+        CancellationToken ct     = default)
     {
         IQueryable<Activity> q = _db.Activities.AsNoTracking().Include(a => a.User);
 
-        if (dealId.HasValue)    q = q.Where(a => a.DealId == dealId.Value);
-        if (contactId.HasValue) q = q.Where(a => a.ContactId == contactId.Value);
-        if (userId.HasValue)    q = q.Where(a => a.UserId == userId.Value);
+        if (dealId.HasValue)        q = q.Where(a => a.DealId == dealId.Value);
+        if (contactId.HasValue)     q = q.Where(a => a.ContactId == contactId.Value);
+        if (propertyId.HasValue)    q = q.Where(a => a.PropertyId == propertyId.Value);
+        if (userId.HasValue)        q = q.Where(a => a.UserId == userId.Value);
+        if (type.HasValue)          q = q.Where(a => a.Type == type.Value);
+        if (occurredAfter.HasValue) q = q.Where(a => a.OccurredAt >= occurredAfter.Value);
+        if (occurredBefore.HasValue) q = q.Where(a => a.OccurredAt <= occurredBefore.Value);
 
-        var rows = await q.OrderByDescending(a => a.OccurredAt).ToListAsync(ct);
-        return rows.Select(ToDto).ToList();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            q = q.Where(a =>
+                a.Title.ToLower().Contains(term) ||
+                (a.Body != null && a.Body.ToLower().Contains(term)));
+        }
+
+        var totalCount = await q.CountAsync(ct);
+
+        var items = await q
+            .OrderByDescending(a => a.OccurredAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return new PagedResult<ActivityDto>
+        {
+            Items      = items.Select(ToDto).ToList(),
+            TotalCount = totalCount,
+            Page       = page,
+            PageSize   = pageSize,
+        };
     }
 
     public async Task<ActivityDto?> GetByIdAsync(Guid id, CancellationToken ct = default)

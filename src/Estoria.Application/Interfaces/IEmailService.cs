@@ -55,6 +55,20 @@ public interface IEmailService
         IReadOnlyList<SavedSearchDigestItem> matches,
         string unsubscribeUrl,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// One newsletter-campaign send. Returns true on 2xx, false on any
+    /// non-2xx so the orchestrator can tally failures without crashing the
+    /// run. Implementations append a localized unsubscribe footer pointing
+    /// at the public site's /unsubscribe/{token} route.
+    /// </summary>
+    Task<bool> SendNewsletterCampaignAsync(
+        string toEmail,
+        Language lang,
+        string subject,
+        string bodyHtml,
+        string unsubscribeToken,
+        CancellationToken ct = default);
 }
 
 /// <summary>Single property line item rendered inside a saved-search digest.</summary>

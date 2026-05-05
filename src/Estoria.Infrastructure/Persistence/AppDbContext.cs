@@ -31,6 +31,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<CareerPostingTranslation> CareerPostingTranslations => Set<CareerPostingTranslation>();
 
     public DbSet<NewsletterSubscriber> NewsletterSubscribers => Set<NewsletterSubscriber>();
+    public DbSet<NewsletterCampaign> NewsletterCampaigns => Set<NewsletterCampaign>();
     public DbSet<ContactMessage> ContactMessages => Set<ContactMessage>();
 
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();

@@ -156,6 +156,14 @@ builder.Services.AddRateLimiter(options =>
         o.PermitLimit = 3;
         o.Window      = TimeSpan.FromHours(1);
     });
+    // Outbound newsletter send-now endpoint — five per hour per user is more
+    // than enough for legitimate "send draft → fix typo → resend" cycles
+    // without risking duplicate blasts on misclicks.
+    options.AddFixedWindowLimiter("newsletter-send", o =>
+    {
+        o.PermitLimit = 5;
+        o.Window      = TimeSpan.FromHours(1);
+    });
     options.RejectionStatusCode = 429;
 });
 

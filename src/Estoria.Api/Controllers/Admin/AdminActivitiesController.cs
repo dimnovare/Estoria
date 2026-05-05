@@ -1,5 +1,6 @@
 using Estoria.Application.DTOs.CRM.Activities;
 using Estoria.Application.Services;
+using Estoria.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,11 +17,24 @@ public class AdminActivitiesController : ControllerBase
 
     [HttpGet]
     public async Task<IActionResult> GetList(
-        [FromQuery] Guid? dealId    = null,
-        [FromQuery] Guid? contactId = null,
-        [FromQuery] Guid? userId    = null,
+        [FromQuery] Guid? dealId             = null,
+        [FromQuery] Guid? contactId          = null,
+        [FromQuery] Guid? propertyId         = null,
+        [FromQuery] Guid? userId             = null,
+        [FromQuery] ActivityType? type       = null,
+        [FromQuery] DateTime? occurredAfter  = null,
+        [FromQuery] DateTime? occurredBefore = null,
+        [FromQuery] string? search           = null,
+        [FromQuery] int page                 = 1,
+        [FromQuery] int pageSize             = 50,
         CancellationToken ct = default)
-        => Ok(await _svc.GetListAsync(dealId, contactId, userId, ct));
+    {
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 500);
+        return Ok(await _svc.GetListAsync(
+            dealId, contactId, propertyId, userId, type,
+            occurredAfter, occurredBefore, search, page, pageSize, ct));
+    }
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)

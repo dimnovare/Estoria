@@ -14,12 +14,12 @@ public class UpcomingBirthdayDto
 
     /// <summary>0 = today, 1 = tomorrow, …</summary>
     public int DaysUntil { get; set; }
-}
 
-public class BirthdayTemplateDto
-{
-    public Guid Id { get; set; }
-    public List<BirthdayTemplateTranslationDto> Translations { get; set; } = new();
+    /// <summary>Age the contact will be on their next birthday. Computed server-side.</summary>
+    public int TurningAge { get; set; }
+
+    /// <summary>The actual upcoming birthday date (this year or next).</summary>
+    public DateOnly NextBirthday { get; set; }
 }
 
 public class BirthdayTemplateTranslationDto
@@ -29,10 +29,10 @@ public class BirthdayTemplateTranslationDto
     public string BodyHtml { get; set; } = string.Empty;
 }
 
-public class BirthdayTemplateUpsertDto
+/// <summary>Optional body for POST /send-now — when ContactId is set, only that contact is mailed.</summary>
+public class BirthdaySendRequestDto
 {
-    [Required]
-    public List<BirthdayTemplateTranslationDto> Translations { get; set; } = new();
+    public Guid? ContactId { get; set; }
 }
 
 public class BirthdaySendResultDto

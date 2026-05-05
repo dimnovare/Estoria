@@ -48,6 +48,7 @@ public class TaskService
     public async Task<List<AppTaskDto>> GetMineAsync(
         AppTaskStatus? status = null,
         TimeSpan? dueWithin = null,
+        bool? overdue = null,
         CancellationToken ct = default)
     {
         var userId = _authz.CurrentUserId;
@@ -62,8 +63,81 @@ public class TaskService
             q = q.Where(t => t.DueAt <= cutoff);
         }
 
+        // Only filter when overdue=true. overdue=false would over-constrain
+        // the "give me my upcoming tasks" use-case, so we treat it as omitted.
+        if (overdue == true)
+        {
+            var now = DateTime.UtcNow;
+            q = q.Where(t => t.Status == AppTaskStatus.Pending && t.DueAt < now);
+        }
+
         var rows = await q.OrderBy(t => t.DueAt).ToListAsync(ct);
         return rows.Select(ToDto).ToList();
+    }
+
+    /// <summary>
+    /// Filter-rich list endpoint. Mirrors the AdminTasksController query
+    /// surface — every filter is optional, so a no-arg call returns the
+    /// most recent slice across all assignees. Pending tasks sort by
+    /// soonest-due, completed/cancelled by most-recent-completion.
+    /// </summary>
+    public async Task<PagedResult<AppTaskDto>> GetListAsync(
+        Guid? assignedToId,
+        AppTaskStatus? status,
+        AppTaskPriority? priority,
+        bool? overdue,
+        bool? hasReminder,
+        DateTime? dueBefore,
+        DateTime? dueAfter,
+        Guid? contactId,
+        Guid? dealId,
+        Guid? propertyId,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        var q = _db.Tasks.AsNoTracking().AsQueryable();
+
+        if (assignedToId.HasValue) q = q.Where(t => t.AssignedToUserId == assignedToId.Value);
+        if (status.HasValue)       q = q.Where(t => t.Status == status.Value);
+        if (priority.HasValue)     q = q.Where(t => t.Priority == priority.Value);
+        if (contactId.HasValue)    q = q.Where(t => t.ContactId == contactId.Value);
+        if (dealId.HasValue)       q = q.Where(t => t.DealId == dealId.Value);
+        if (propertyId.HasValue)   q = q.Where(t => t.PropertyId == propertyId.Value);
+        if (dueBefore.HasValue)    q = q.Where(t => t.DueAt < EnsureUtc(dueBefore.Value));
+        if (dueAfter.HasValue)     q = q.Where(t => t.DueAt > EnsureUtc(dueAfter.Value));
+
+        if (hasReminder == true)  q = q.Where(t => t.ReminderAt != null);
+        if (hasReminder == false) q = q.Where(t => t.ReminderAt == null);
+
+        if (overdue == true)
+        {
+            var now = DateTime.UtcNow;
+            q = q.Where(t => t.Status == AppTaskStatus.Pending && t.DueAt < now);
+        }
+
+        var totalCount = await q.CountAsync(ct);
+
+        // Pending → upcoming first; everything else sorts by recent completion
+        // so the "Done" tab reads chronologically. We split the query into the
+        // appropriate ORDER BY based on whether the caller asked for one of
+        // the closed statuses.
+        IQueryable<AppTask> ordered = status is AppTaskStatus.Done or AppTaskStatus.Cancelled
+            ? q.OrderByDescending(t => t.CompletedAt ?? t.UpdatedAt)
+            : q.OrderBy(t => t.DueAt);
+
+        var items = await ordered
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return new PagedResult<AppTaskDto>
+        {
+            Items      = items.Select(ToDto).ToList(),
+            TotalCount = totalCount,
+            Page       = page,
+            PageSize   = pageSize,
+        };
     }
 
     public async Task<List<AppTaskDto>> GetForContactAsync(Guid contactId, CancellationToken ct = default)
@@ -227,6 +301,48 @@ public class TaskService
             "Task.Complete",
             entityType: nameof(AppTask),
             entityId: task.Id,
+            ct: ct);
+    }
+
+    /// <summary>
+    /// Used by the optimistic toggle in the admin task list. Differs from
+    /// CompleteAsync in that it accepts any target status and clears /
+    /// stamps CompletedAt accordingly.
+    /// </summary>
+    public async Task SetStatusAsync(Guid id, AppTaskStatus status, CancellationToken ct = default)
+    {
+        _authz.RequireWriteAccess();
+
+        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.Id == id, ct)
+            ?? throw new KeyNotFoundException($"Task {id} not found.");
+
+        _authz.RequireOwnershipOrAdmin(task.AssignedToUserId);
+
+        if (task.Status == status) return;
+
+        task.Status = status;
+        task.CompletedAt = status == AppTaskStatus.Done ? DateTime.UtcNow : null;
+
+        // Closed tasks shouldn't keep firing reminders. Re-opening (Done →
+        // Pending) leaves ReminderAt as-is but unmarks ReminderSent so the
+        // user can manually re-schedule via the edit flow.
+        if (status != AppTaskStatus.Pending)
+        {
+            CancelReminder(task);
+            task.ReminderJobId = null;
+        }
+        else
+        {
+            task.ReminderSent = false;
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Task.SetStatus",
+            entityType: nameof(AppTask),
+            entityId: task.Id,
+            details: new { task.Status },
             ct: ct);
     }
 

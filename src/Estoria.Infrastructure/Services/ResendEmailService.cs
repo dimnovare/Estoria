@@ -13,6 +13,7 @@ public class ResendEmailService : IEmailService
     private readonly string _apiKey;
     private readonly string _fromEmail;
     private readonly string _notificationEmail;
+    private readonly string _publicSiteBaseUrl;
 
     public ResendEmailService(
         IHttpClientFactory httpClientFactory,
@@ -26,6 +27,13 @@ public class ResendEmailService : IEmailService
         _apiKey              = section["ApiKey"]            ?? throw new InvalidOperationException("Resend:ApiKey is not configured.");
         _fromEmail           = section["FromEmail"]         ?? throw new InvalidOperationException("Resend:FromEmail is not configured.");
         _notificationEmail   = section["NotificationEmail"] ?? throw new InvalidOperationException("Resend:NotificationEmail is not configured.");
+
+        // Frontend base URL is needed to render the unsubscribe footer link.
+        // Falls through PublicSite:BaseUrl → PUBLIC_SITE_BASE_URL env var →
+        // hardcoded prod default so the app boots even on a fresh staging.
+        _publicSiteBaseUrl = config["PublicSite:BaseUrl"]
+            ?? Environment.GetEnvironmentVariable("PUBLIC_SITE_BASE_URL")
+            ?? "https://estoria.estate";
     }
 
     public async Task SendContactNotificationAsync(
@@ -131,6 +139,70 @@ public class ResendEmailService : IEmailService
         };
 
         await SendAsync(to: toEmail, subject: subject, html: body, ct: ct);
+    }
+
+    public async Task<bool> SendNewsletterCampaignAsync(
+        string toEmail,
+        Language lang,
+        string subject,
+        string bodyHtml,
+        string unsubscribeToken,
+        CancellationToken ct = default)
+    {
+        var unsubscribeUrl = $"{_publicSiteBaseUrl.TrimEnd('/')}/unsubscribe/{unsubscribeToken}";
+
+        var (footerLabel, footerNote) = lang switch
+        {
+            Language.Et => ("Tühista tellimus",
+                "Saite selle kirja, sest olete tellinud Estoria uudiskirja."),
+            Language.Ru => ("Отписаться",
+                "Вы получили это письмо, потому что подписались на рассылку Estoria."),
+            _ => ("Unsubscribe",
+                "You're receiving this email because you subscribed to the Estoria newsletter."),
+        };
+
+        // Footer is appended to the editor-supplied body so admins can compose
+        // freely without remembering to include the unsubscribe link. The
+        // small grey separator keeps it visually subordinate to the content.
+        var html = $$"""
+            {{bodyHtml}}
+            <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb"/>
+            <p style="font-size:12px;color:#6b7280">
+              {{footerNote}}
+              <br/>
+              <a href="{{unsubscribeUrl}}" style="color:#6b7280">{{footerLabel}}</a>
+            </p>
+            """;
+
+        var client = _httpClientFactory.CreateClient("Resend");
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
+
+        try
+        {
+            var response = await client.PostAsJsonAsync("https://api.resend.com/emails", new
+            {
+                from    = _fromEmail,
+                to      = toEmail,
+                subject,
+                html,
+            }, ct);
+
+            if (response.IsSuccessStatusCode) return true;
+
+            var body = await response.Content.ReadAsStringAsync(ct);
+            var snippet = body.Length > 200 ? body[..200] : body;
+            _logger.LogWarning(
+                "RESEND_FAIL kind=NewsletterCampaign from={From} to={To} status={Status} body={Body}",
+                _fromEmail, toEmail, (int)response.StatusCode, snippet);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "RESEND_EXCEPTION kind=NewsletterCampaign to={To}", toEmail);
+            return false;
+        }
     }
 
     public async Task SendBirthdayAsync(

@@ -7,8 +7,8 @@ namespace Estoria.Api.Controllers.Admin;
 
 /// <summary>
 /// Admin surface for the birthday automation: list upcoming birthdays, edit
-/// the email template, and manually trigger the daily greeting run for
-/// staging/QA. The recurring Hangfire job (registered in Program.cs) calls
+/// the email template per language, and manually trigger the daily greeting
+/// (bulk or single-contact). The recurring Hangfire job (Program.cs) calls
 /// the same SendBirthdayGreetingsAsync at 08:00 UTC.
 /// </summary>
 [ApiController]
@@ -27,29 +27,43 @@ public class AdminBirthdayController : ControllerBase
         CancellationToken ct = default)
         => Ok(await _svc.GetUpcomingAsync(days, ct));
 
+    /// <summary>
+    /// Returns one entry per Language enum value (Et, En, Ru) — flat array so
+    /// the admin UI can bind a language tab per row without conditional logic.
+    /// Languages without any saved customization come back with empty strings.
+    /// </summary>
     [HttpGet("template")]
     public async Task<IActionResult> GetTemplate(CancellationToken ct = default)
-    {
-        var t = await _svc.GetTemplateAsync(ct);
-        return t is null ? NotFound() : Ok(t);
-    }
+        => Ok(await _svc.GetTranslationsAsync(ct));
 
+    /// <summary>
+    /// Single-translation upsert. Body is one BirthdayTemplateTranslationDto;
+    /// language is identified by the Language enum on the body, not the URL.
+    /// </summary>
     [HttpPut("template")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> UpdateTemplate(
-        [FromBody] BirthdayTemplateUpsertDto dto,
+    public async Task<IActionResult> UpsertTemplate(
+        [FromBody] BirthdayTemplateTranslationDto dto,
         CancellationToken ct = default)
     {
-        await _svc.UpsertTemplateAsync(dto, ct);
+        await _svc.UpsertTranslationAsync(dto.Language, dto.Subject, dto.BodyHtml, ct);
         return NoContent();
     }
 
     /// <summary>
-    /// Manually fires today's birthday run. Useful for verifying the email
-    /// integration end-to-end before flipping <c>birthday.auto_send</c> on.
+    /// Manual fire. Body { contactId? } scopes to one contact when present;
+    /// absent body sends to every eligible contact (same rules as the
+    /// recurring job).
     /// </summary>
     [HttpPost("send-now")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> SendNow(CancellationToken ct = default)
-        => Ok(await _svc.SendBirthdayGreetingsAsync(ct));
+    public async Task<IActionResult> SendNow(
+        [FromBody] BirthdaySendRequestDto? dto = null,
+        CancellationToken ct = default)
+    {
+        if (dto?.ContactId is { } id)
+            return Ok(await _svc.SendOneAsync(id, ct));
+
+        return Ok(await _svc.SendBirthdayGreetingsAsync(ct));
+    }
 }

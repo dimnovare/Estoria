@@ -28,20 +28,51 @@ public class AdminTasksController : ControllerBase
     }
 
     /// <summary>
+    /// Filter-rich admin list. Every parameter optional — no-arg returns
+    /// the most recent slice across assignees. Used by /admin/tasks.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> GetList(
+        [FromQuery] Guid? assignedToId        = null,
+        [FromQuery] AppTaskStatus? status     = null,
+        [FromQuery] AppTaskPriority? priority = null,
+        [FromQuery] bool? overdue             = null,
+        [FromQuery] bool? hasReminder         = null,
+        [FromQuery] DateTime? dueBefore       = null,
+        [FromQuery] DateTime? dueAfter        = null,
+        [FromQuery] Guid? contactId           = null,
+        [FromQuery] Guid? dealId              = null,
+        [FromQuery] Guid? propertyId          = null,
+        [FromQuery] int page                  = 1,
+        [FromQuery] int pageSize              = 50,
+        CancellationToken ct = default)
+    {
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        var result = await _svc.GetListAsync(
+            assignedToId, status, priority, overdue, hasReminder,
+            dueBefore, dueAfter, contactId, dealId, propertyId,
+            page, pageSize, ct);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Tasks assigned to the caller. <paramref name="dueWithin"/> accepts a
     /// duration string ("7d", "12h", "2.05:00:00"); when null, no time bound.
+    /// <paramref name="overdue"/> = true narrows further to Pending+past-due.
     /// </summary>
     [HttpGet("mine")]
     public async Task<IActionResult> GetMine(
         [FromQuery] AppTaskStatus? status = null,
-        [FromQuery] string? dueWithin = null,
+        [FromQuery] string? dueWithin     = null,
+        [FromQuery] bool? overdue         = null,
         CancellationToken ct = default)
     {
         TimeSpan? window = null;
         if (!string.IsNullOrWhiteSpace(dueWithin))
             window = ParseDueWithin(dueWithin);
 
-        return Ok(await _svc.GetMineAsync(status, window, ct));
+        return Ok(await _svc.GetMineAsync(status, window, overdue, ct));
     }
 
     [HttpGet("by-contact/{contactId:guid}")]
@@ -86,6 +117,20 @@ public class AdminTasksController : ControllerBase
     public async Task<IActionResult> Complete(Guid id, CancellationToken ct = default)
     {
         await _svc.CompleteAsync(id, ct);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Optimistic toggle endpoint. Sibling to Complete that accepts any
+    /// target status — reopen-to-Pending, mark Cancelled, etc.
+    /// </summary>
+    [HttpPut("{id:guid}/status")]
+    public async Task<IActionResult> SetStatus(
+        Guid id,
+        [FromBody] SetTaskStatusDto dto,
+        CancellationToken ct = default)
+    {
+        await _svc.SetStatusAsync(id, dto.Status, ct);
         return NoContent();
     }
 
