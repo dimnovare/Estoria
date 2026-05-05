@@ -35,7 +35,7 @@ public class AdminUploadController : ControllerBase
             return BadRequest($"File type '{ext}' is not allowed.");
 
         await using var stream = file.OpenReadStream();
-        var url = await _storage.UploadAsync(stream, file.FileName, file.ContentType, folder, ct);
+        var url = await _storage.UploadPublicAsync(stream, file.FileName, file.ContentType, folder, ct);
 
         return Ok(new { url });
     }

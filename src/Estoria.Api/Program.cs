@@ -36,6 +36,22 @@ if (!string.IsNullOrEmpty(dbUrl))
     }
 }
 
+// R2 storage env-var overrides — same pattern as DATABASE_URL.
+foreach (var (envVar, configKey) in new[]
+{
+    ("R2_PUBLIC_BUCKET",     "Storage:PublicBucket"),
+    ("R2_PRIVATE_BUCKET",    "Storage:PrivateBucket"),
+    ("R2_PUBLIC_CDN_URL",    "Storage:PublicCdnUrl"),
+    ("R2_ACCOUNT_ID",        "Storage:AccountId"),
+    ("R2_ACCESS_KEY_ID",     "Storage:AccessKeyId"),
+    ("R2_SECRET_ACCESS_KEY", "Storage:SecretAccessKey"),
+})
+{
+    var value = Environment.GetEnvironmentVariable(envVar);
+    if (!string.IsNullOrEmpty(value))
+        builder.Configuration[configKey] = value;
+}
+
 builder.Services.AddControllers()
     .AddJsonOptions(o =>
     {

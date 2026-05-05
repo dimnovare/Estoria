@@ -98,7 +98,7 @@ public class AdminTeamController : ControllerBase
             await _storage.DeleteAsync(member.PhotoUrl, ct);
 
         await using var stream = file.OpenReadStream();
-        member.PhotoUrl = await _storage.UploadAsync(
+        member.PhotoUrl = await _storage.UploadPublicAsync(
             stream, file.FileName, file.ContentType, "team", ct);
 
         await _db.SaveChangesAsync(ct);

@@ -934,6 +934,7 @@ public class DataSeeder
             ("ai.descriptions_enabled",   "false",                                   SettingValueType.Boolean),
             ("ai.replies_enabled",        "false",                                   SettingValueType.Boolean),
             ("birthday.auto_send",        "false",                                   SettingValueType.Boolean),
+            ("savedsearches.auto_send",   "false",                                   SettingValueType.Boolean),
         };
 
         var inserted = false;
