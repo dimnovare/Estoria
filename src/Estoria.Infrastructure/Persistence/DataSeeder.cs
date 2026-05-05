@@ -137,7 +137,7 @@ public class DataSeeder
         {
             Slug      = "martin-tamm",
             Phone     = "+372 5123 4567",
-            Email     = "martin.tamm@estoria.ee",
+            Email     = "martin.tamm@estoria.estate",
             Languages = ["et", "en", "ru"],
             SortOrder = 1,
             IsActive  = true,
@@ -171,7 +171,7 @@ public class DataSeeder
         {
             Slug      = "liis-kask",
             Phone     = "+372 5234 5678",
-            Email     = "liis.kask@estoria.ee",
+            Email     = "liis.kask@estoria.estate",
             Languages = ["et", "en"],
             SortOrder = 2,
             IsActive  = true,
@@ -205,7 +205,7 @@ public class DataSeeder
         {
             Slug      = "andrei-volkov",
             Phone     = "+372 5345 6789",
-            Email     = "andrei.volkov@estoria.ee",
+            Email     = "andrei.volkov@estoria.estate",
             Languages = ["et", "en", "ru"],
             SortOrder = 3,
             IsActive  = true,

@@ -52,6 +52,37 @@ foreach (var (envVar, configKey) in new[]
         builder.Configuration[configKey] = value;
 }
 
+// CORS env-var override — comma-separated, e.g.
+//   "https://estoria.estate,https://www.estoria.estate,https://estoria-luxury-builders-main.vercel.app"
+var corsOverride = Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS");
+if (!string.IsNullOrWhiteSpace(corsOverride))
+{
+    var origins = corsOverride.Split(',', StringSplitOptions.RemoveEmptyEntries
+                                        | StringSplitOptions.TrimEntries);
+    // Wipe the existing array indices defensively before writing new ones
+    for (int i = 0; i < 16; i++)
+        builder.Configuration[$"Cors:AllowedOrigins:{i}"] = null;
+    for (int i = 0; i < origins.Length; i++)
+        builder.Configuration[$"Cors:AllowedOrigins:{i}"] = origins[i];
+    Console.WriteLine($"[Estoria] CORS origins overridden from env var ({origins.Length} entries)");
+}
+
+// Resend env-var overrides — accepts both UPPERCASE_SNAKE and the default
+// ASP.NET double-underscore convention (Resend__ApiKey). The DefaultConfig
+// provider already handles the double-underscore form; this block adds the
+// uppercase form so either Railway naming style works.
+foreach (var (envVar, configKey) in new[]
+{
+    ("RESEND_API_KEY",            "Resend:ApiKey"),
+    ("RESEND_FROM_EMAIL",         "Resend:FromEmail"),
+    ("RESEND_NOTIFICATION_EMAIL", "Resend:NotificationEmail"),
+})
+{
+    var value = Environment.GetEnvironmentVariable(envVar);
+    if (!string.IsNullOrEmpty(value))
+        builder.Configuration[configKey] = value;
+}
+
 builder.Services.AddControllers()
     .AddJsonOptions(o =>
     {

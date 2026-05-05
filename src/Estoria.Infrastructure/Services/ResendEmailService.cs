@@ -97,6 +97,13 @@ public class ResendEmailService : IEmailService
             _logger.LogError(
                 "Resend API error {StatusCode}: {Body}",
                 (int)response.StatusCode, body);
+
+            // Grep-friendly single-line WARN — silent delivery failures were
+            // hiding before. Truncate body to keep log lines bounded.
+            var snippet = body.Length > 200 ? body[..200] : body;
+            _logger.LogWarning(
+                "RESEND_FAIL from={From} to={To} status={Status} body={Body}",
+                _fromEmail, to, (int)response.StatusCode, snippet);
         }
     }
 
