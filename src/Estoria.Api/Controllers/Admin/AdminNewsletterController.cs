@@ -1,11 +1,12 @@
 using Estoria.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Estoria.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/newsletter")]
-// TODO: [Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin")]
 public class AdminNewsletterController : ControllerBase
 {
     private readonly NewsletterService _svc;

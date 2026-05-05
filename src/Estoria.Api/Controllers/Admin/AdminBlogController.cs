@@ -1,12 +1,13 @@
 using Estoria.Application.DTOs.Blog;
 using Estoria.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Estoria.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/blog")]
-// TODO: [Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin")]
 public class AdminBlogController : ControllerBase
 {
     private readonly BlogService _svc;

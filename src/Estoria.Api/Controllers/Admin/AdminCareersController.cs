@@ -1,12 +1,13 @@
 using Estoria.Application.DTOs.Careers;
 using Estoria.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Estoria.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/careers")]
-// TODO: [Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin")]
 public class AdminCareersController : ControllerBase
 {
     private readonly CareerService _svc;

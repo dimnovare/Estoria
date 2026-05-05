@@ -1,6 +1,7 @@
 using Estoria.Application.DTOs.Team;
 using Estoria.Application.Interfaces;
 using Estoria.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,7 +9,7 @@ namespace Estoria.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/team")]
-// TODO: [Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin")]
 public class AdminTeamController : ControllerBase
 {
     private static readonly HashSet<string> _allowedExtensions =

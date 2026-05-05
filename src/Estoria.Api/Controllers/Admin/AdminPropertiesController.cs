@@ -2,6 +2,7 @@ using Estoria.Application.DTOs.Properties;
 using Estoria.Application.Interfaces;
 using Estoria.Application.Services;
 using Estoria.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,7 +10,7 @@ namespace Estoria.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/properties")]
-// TODO: [Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin")]
 public class AdminPropertiesController : ControllerBase
 {
     private static readonly HashSet<string> _allowedExtensions =

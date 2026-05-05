@@ -1,5 +1,6 @@
 using Estoria.Application.Interfaces;
 using Estoria.Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,7 +8,7 @@ namespace Estoria.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/stats")]
-// TODO: [Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin")]
 public class AdminStatsController : ControllerBase
 {
     private readonly IAppDbContext _db;

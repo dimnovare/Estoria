@@ -1,12 +1,13 @@
 using Estoria.Application.Services;
 using Estoria.Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Estoria.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/contacts")]
-// TODO: [Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin")]
 public class AdminContactsController : ControllerBase
 {
     private readonly ContactService _svc;

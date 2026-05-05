@@ -1,12 +1,13 @@
 using Estoria.Application.DTOs.CMS;
 using Estoria.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Estoria.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/pages")]
-// TODO: [Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin")]
 public class AdminPageContentController : ControllerBase
 {
     private readonly PageContentService _svc;

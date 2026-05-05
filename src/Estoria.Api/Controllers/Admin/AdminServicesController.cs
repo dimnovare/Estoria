@@ -1,12 +1,13 @@
 using Estoria.Application.DTOs.Services;
 using Estoria.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Estoria.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/services")]
-// TODO: [Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin")]
 public class AdminServicesController : ControllerBase
 {
     private readonly OfferedServiceService _svc;
