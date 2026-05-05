@@ -20,6 +20,8 @@ public class SiteSettingService
         "social.facebook",
         "social.instagram",
         "social.linkedin",
+        "legal.company_name",
+        "legal.registry_code",
     };
 
     private readonly IAppDbContext _db;

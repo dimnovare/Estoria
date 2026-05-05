@@ -118,13 +118,13 @@ public class DataSeeder
             PageContent("contact.info", new (Language, string?, string?, string?, string?)[]
             {
                 (Language.En, "Contact Us",
-                    "Estoria Real Estate\nKotzebue 4, Tallinn 10412, Estonia\nPhone: +372 600 1234\nEmail: info@estoria.estate\nOpen Mon–Fri 09:00–18:00, Sat 10:00–15:00",
+                    "Estoria Real Estate\nKatusepapi 6, Tallinn 11412, Estonia\nPhone: +372 600 1234\nEmail: info@estoria.estate\nOpen Mon–Fri 09:00–18:00, Sat 10:00–15:00",
                     null, null),
                 (Language.Et, "Võtke meiega ühendust",
-                    "Estoria Kinnisvara\nKotzebue 4, Tallinn 10412, Eesti\nTelefon: +372 600 1234\nE-post: info@estoria.estate\nAvatud E–R 09:00–18:00, L 10:00–15:00",
+                    "Estoria Kinnisvara\nKatusepapi tn 6, Tallinn 11412, Eesti\nTelefon: +372 600 1234\nE-post: info@estoria.estate\nAvatud E–R 09:00–18:00, L 10:00–15:00",
                     null, null),
                 (Language.Ru, "Свяжитесь с нами",
-                    "Estoria Недвижимость\nKotzebue 4, Таллин 10412, Эстония\nТелефон: +372 600 1234\nEmail: info@estoria.estate\nРабочие часы: пн–пт 09:00–18:00, сб 10:00–15:00",
+                    "Estoria Недвижимость\nКатусепапи 6, Таллин 11412, Эстония\nТелефон: +372 600 1234\nEmail: info@estoria.estate\nРабочие часы: пн–пт 09:00–18:00, сб 10:00–15:00",
                     null, null),
             }),
         };
@@ -922,11 +922,13 @@ public class DataSeeder
             ("stats.satisfaction_percent","98",                                      SettingValueType.Number),
             ("contact.email",             "info@estoria.estate",                     SettingValueType.Text),
             ("contact.phone",             "+372 600 1234",                           SettingValueType.Text),
-            ("contact.address",           "Kotzebue 4, Tallinn 10412, Estonia",      SettingValueType.Text),
+            ("contact.address",           "Katusepapi 6, Tallinn 11412, Estonia",    SettingValueType.Text),
             ("contact.hours",             "Mon–Fri 09:00–18:00, Sat 10:00–15:00", SettingValueType.Text),
             ("social.facebook",           "",                                        SettingValueType.Text),
             ("social.instagram",          "",                                        SettingValueType.Text),
             ("social.linkedin",           "",                                        SettingValueType.Text),
+            ("legal.company_name",        "ESTORIA CAPITAL GROUP OÜ",                SettingValueType.Text),
+            ("legal.registry_code",       "17477775",                                SettingValueType.Text),
 
             // Private (admin-only)
             ("watermark.enabled",         "true",                                    SettingValueType.Boolean),
