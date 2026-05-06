@@ -1,4 +1,5 @@
 using Estoria.Application.Interfaces;
+using Estoria.Infrastructure.External;
 using Estoria.Infrastructure.Jobs;
 using Estoria.Infrastructure.Persistence;
 using Estoria.Infrastructure.Services;
@@ -54,6 +55,11 @@ public static class DependencyInjection
         // MagickImage objects for the lifetime of the request.
         services.AddScoped<IImageProcessingService, MagickImageProcessingService>();
         services.AddScoped<IImageProcessingJob, ImageProcessingJob>();
+
+        // Microsoft Graph / shared mailbox client. Singleton: GraphServiceClient
+        // is thread-safe and the underlying ClientSecretCredential caches tokens
+        // — re-creating per scope would defeat that cache.
+        services.AddSingleton<IMailboxService, GraphMailService>();
 
         services.AddJobInfrastructure(config);
 

@@ -54,6 +54,8 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
     public DbSet<PropertyEvent> PropertyEvents => Set<PropertyEvent>();
 
+    public DbSet<MailboxLink> MailboxLinks => Set<MailboxLink>();
+
     public override async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         foreach (var entry in ChangeTracker.Entries<BaseEntity>()

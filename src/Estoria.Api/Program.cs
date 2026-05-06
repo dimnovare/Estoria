@@ -87,6 +87,22 @@ foreach (var (envVar, configKey) in new[]
         builder.Configuration[configKey] = value;
 }
 
+// Microsoft Graph env-var overrides — same pattern as Resend.
+// TenantId / ClientId / ClientSecret come from the Azure app registration;
+// Mailbox is the shared inbox the Application Access Policy scopes us to.
+foreach (var (envVar, configKey) in new[]
+{
+    ("GRAPH_TENANT_ID",     "Graph:TenantId"),
+    ("GRAPH_CLIENT_ID",     "Graph:ClientId"),
+    ("GRAPH_CLIENT_SECRET", "Graph:ClientSecret"),
+    ("GRAPH_MAILBOX",       "Graph:Mailbox"),
+})
+{
+    var value = Environment.GetEnvironmentVariable(envVar);
+    if (!string.IsNullOrEmpty(value))
+        builder.Configuration[configKey] = value;
+}
+
 builder.Services.AddControllers()
     .AddJsonOptions(o =>
     {
@@ -297,6 +313,22 @@ RecurringJob.AddOrUpdate<SavedSearchDeliveryService>(
     methodCall: svc => svc.ProcessAsync(SavedSearchFrequency.Weekly, default),
     // "0 9 * * MON" — Mondays at 09:00 UTC.
     cronExpression: Cron.Weekly(DayOfWeek.Monday, 9, 0));
+
+// Inbox sync — Graph delta pull every 2 minutes. Gated on the presence of
+// Graph:TenantId so dev environments without the env-vars don't fire a
+// failing job on a 2-minute loop. Manual one-off triggering through the
+// Hangfire dashboard is still possible while gated.
+if (!string.IsNullOrEmpty(builder.Configuration["Graph:TenantId"]))
+{
+    RecurringJob.AddOrUpdate<Estoria.Application.Services.MailboxLinkService>(
+        recurringJobId: "mailbox-inbox-sync",
+        methodCall: svc => svc.SyncInboxAsync(default),
+        cronExpression: "*/2 * * * *");
+}
+else
+{
+    Console.WriteLine("[Estoria] Graph not configured — skipping mailbox-inbox-sync recurring job.");
+}
 
 app.MapControllers();
 // Simple health endpoint for Railway — never touches the database

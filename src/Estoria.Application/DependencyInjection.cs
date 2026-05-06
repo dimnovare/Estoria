@@ -39,6 +39,11 @@ public static class DependencyInjection
         services.AddScoped<SavedSearchService>();
         services.AddScoped<SavedSearchDeliveryService>();
 
+        // Mailbox / Microsoft Graph integration. The IMailboxService impl
+        // lives in Infrastructure; this service consumes it to bridge Graph
+        // messages to the CRM (links + auto-matched email activities).
+        services.AddScoped<MailboxLinkService>();
+
         return services;
     }
 }

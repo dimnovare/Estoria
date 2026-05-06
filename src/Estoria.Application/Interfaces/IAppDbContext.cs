@@ -49,5 +49,7 @@ public interface IAppDbContext
     DbSet<SavedSearch> SavedSearches { get; }
     DbSet<PropertyEvent> PropertyEvents { get; }
 
+    DbSet<MailboxLink> MailboxLinks { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
