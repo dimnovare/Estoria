@@ -83,15 +83,37 @@ public class AdminInboxController : ControllerBase
 
         var byId = links.ToDictionary(l => l.GraphMessageId);
 
-        var enriched = page.Items.Select(m => new
-        {
-            message = m,
-            link    = byId.TryGetValue(m.Id, out var l) ? l : null,
-        }).ToList();
-
+        // Flat shape — frontend's InboxMessageSummary expects a single-level
+        // object per row. fromName has a defence-in-depth fallback so the
+        // frontend's initials() helper can never see null.
         return Ok(new
         {
-            items         = enriched,
+            items = page.Items.Select(m =>
+            {
+                byId.TryGetValue(m.Id, out var l);
+                return new
+                {
+                    id              = m.Id,
+                    folder          = "Inbox",
+                    from            = m.From?.Address ?? string.Empty,
+                    fromName        = !string.IsNullOrWhiteSpace(m.From?.Name)
+                                        ? m.From!.Name
+                                        : !string.IsNullOrWhiteSpace(m.From?.Address)
+                                            ? m.From!.Address
+                                            : "(unknown sender)",
+                    to              = m.ToRecipients.Select(t => t.Address).ToArray(),
+                    subject         = m.Subject,
+                    preview         = m.BodyPreview,
+                    receivedAt      = m.ReceivedAt,
+                    isRead          = m.IsRead,
+                    hasAttachments  = m.HasAttachments,
+                    linkedContactId   = l?.ContactId,
+                    linkedContactName = l?.ContactName,
+                    linkedDealId      = l?.DealId,
+                    linkedDealTitle   = l?.DealTitle,
+                    linkedPropertyId  = l?.PropertyId,
+                };
+            }).ToList(),
             nextSkipToken = page.NextSkipToken,
         });
     }

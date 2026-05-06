@@ -46,6 +46,11 @@ public class PropertyTranslationConfiguration : IEntityTypeConfiguration<Propert
     {
         builder.HasIndex(pt => new { pt.PropertyId, pt.Language }).IsUnique();
 
+        // Covering index for the public /api/public/cities lookup, which
+        // filters translations by Language and groups by City. Without it
+        // the query was a 1.5–1.6 s seq-scan + sort on the homepage hot path.
+        builder.HasIndex(pt => new { pt.Language, pt.City });
+
         builder.Property(pt => pt.Title).IsRequired();
         builder.Property(pt => pt.Description).IsRequired();
         builder.Property(pt => pt.Address).IsRequired();

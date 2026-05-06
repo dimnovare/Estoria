@@ -109,3 +109,32 @@ Until then, the `useEffect` pattern (introduced for the property JSON-LD)
 remains the way to inject per-page meta — it works but is imperative and
 doesn't surface in static-HTML view-source.
 
+
+## Frontend bundle: ~124 KiB unused JS on public site (Lighthouse mobile)
+
+Audit done 2026-05-06 found nothing trivially trimmable:
+
+- `lucide-react`: every import is named (`import { Foo } from 'lucide-react'`).
+  Tree-shakes correctly. SVG payload across the ~30 icons used on the
+  public site adds up but none are duplicates.
+- `date-fns`: named imports only — already minimal.
+- `recharts`: only via `components/ui/chart.tsx` (shadcn primitive); not
+  imported by any public page.
+- The `import * as` occurrences are React + Radix primitives (per-package
+  modules), which tree-shake fine.
+
+The 124 KiB is mostly Framer Motion runtime + Radix dialog/popover
+primitives bundled into the public chunk via shared util imports. Real
+fixes need:
+
+- Lazy-load `framer-motion` for the public hero / property-card animations
+  (currently each `motion.*` element pulls the whole runtime).
+- Move shadcn `Dialog`/`Sheet`/`Popover` to admin-only chunks once the
+  remaining public usages (cookie banner, contact form modal) are audited
+  and replaced with native `<dialog>` where possible.
+- Configure `rollupOptions.output.manualChunks` to split `react-query`,
+  `framer-motion`, and the i18n bundles into vendor chunks so the public
+  hot path doesn't reload them on every deploy.
+
+Defer to P5 — not worth the regression risk for the remaining couple of
+Lighthouse points.

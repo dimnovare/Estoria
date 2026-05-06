@@ -97,15 +97,20 @@ public class DataSeeder
 
             PageContent("about.intro", new (Language, string?, string?, string?, string?)[]
             {
+                // ImageUrl left null — About.tsx falls through to the curated
+                // Tallinn Unsplash shot until an editor sets a brand image.
+                // Previously seeded as placehold.co; production rows still
+                // carry that legacy value, which About.tsx now filters via
+                // its isPlaceholderUrl guard.
                 (Language.En, "About Estoria",
                     "Estoria is Tallinn's trusted real estate partner. Founded in 2010, we have helped over 3 000 families find their perfect home. Our multilingual team of certified agents combines deep local knowledge with a personalised approach — ensuring every client receives honest advice and outstanding service.",
-                    "https://placehold.co/1200x800", null),
+                    null, null),
                 (Language.Et, "Estoriast",
                     "Estoria on Tallinna usaldusväärne kinnisvarapartner. Asutatud 2010. aastal, oleme aidanud üle 3 000 pere leida oma täiusliku kodu. Meie mitmekeelne sertifitseeritud maaklerite meeskond ühendab sügavad kohalikud teadmised personaalse lähenemisega — tagades, et iga klient saab ausaid nõuandeid ja suurepärase teeninduse.",
-                    "https://placehold.co/1200x800", null),
+                    null, null),
                 (Language.Ru, "О нас",
                     "Estoria — надёжный партнёр в сфере недвижимости в Таллине. Основанная в 2010 году, наша компания помогла более чем 3 000 семьям найти идеальный дом. Наша многоязычная команда сертифицированных агентов сочетает глубокое знание местного рынка с персональным подходом — гарантируя каждому клиенту честные рекомендации и исключительный сервис.",
-                    "https://placehold.co/1200x800", null),
+                    null, null),
             }),
 
             PageContent("about.story", new (Language, string?, string?, string?, string?)[]
