@@ -27,14 +27,16 @@ public class PageContentService
         if (content is null) return null;
 
         var t = ResolveTranslation(content.Translations, lang);
+        var (imageUrl, videoUrl) = ResolveImageAndVideoUrl(content.Translations, lang, t);
+
         return new PageContentDto
         {
             Id = content.Id,
             PageKey = content.PageKey,
             Title = t?.Title,
             Body = t?.Body,
-            ImageUrl = t?.ImageUrl,
-            VideoUrl = t?.VideoUrl
+            ImageUrl = imageUrl,
+            VideoUrl = videoUrl
         };
     }
 
@@ -50,14 +52,16 @@ public class PageContentService
         return contents.Select(pc =>
         {
             var t = ResolveTranslation(pc.Translations, lang);
+            var (imageUrl, videoUrl) = ResolveImageAndVideoUrl(pc.Translations, lang, t);
+
             return new PageContentDto
             {
                 Id = pc.Id,
                 PageKey = pc.PageKey,
                 Title = t?.Title,
                 Body = t?.Body,
-                ImageUrl = t?.ImageUrl,
-                VideoUrl = t?.VideoUrl
+                ImageUrl = imageUrl,
+                VideoUrl = videoUrl
             };
         }).ToList();
     }
@@ -134,4 +138,29 @@ public class PageContentService
         => list.FirstOrDefault(t => t.Language == lang)
            ?? list.FirstOrDefault(t => t.Language == Language.En)
            ?? list.FirstOrDefault();
+
+    // Image and video URLs fall back across languages — they're the same
+    // photo regardless of which language the visitor reads. Editors only
+    // need to set them once.
+    private static (string? imageUrl, string? videoUrl) ResolveImageAndVideoUrl(
+        List<PageContentTranslation> list, Language lang, PageContentTranslation? primary)
+    {
+        var imageUrl = primary?.ImageUrl;
+        var videoUrl = primary?.VideoUrl;
+
+        if (!string.IsNullOrEmpty(imageUrl) && !string.IsNullOrEmpty(videoUrl))
+            return (imageUrl, videoUrl);
+
+        foreach (var fbLang in new[] { Language.En, Language.Et, Language.Ru })
+        {
+            if (fbLang == lang) continue;
+            var fb = list.FirstOrDefault(x => x.Language == fbLang);
+            if (fb is null) continue;
+            if (string.IsNullOrEmpty(imageUrl)) imageUrl = fb.ImageUrl;
+            if (string.IsNullOrEmpty(videoUrl)) videoUrl = fb.VideoUrl;
+            if (!string.IsNullOrEmpty(imageUrl) && !string.IsNullOrEmpty(videoUrl)) break;
+        }
+
+        return (imageUrl, videoUrl);
+    }
 }

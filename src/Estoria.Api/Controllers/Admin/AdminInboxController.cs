@@ -135,7 +135,40 @@ public class AdminInboxController : ControllerBase
             })
             .FirstOrDefaultAsync(ct);
 
-        return Ok(new { message = msg, link });
+        return Ok(new
+        {
+            id              = msg.Id,
+            folder          = "Inbox",
+            from            = msg.From?.Address ?? string.Empty,
+            fromName        = !string.IsNullOrWhiteSpace(msg.From?.Name)
+                                ? msg.From!.Name
+                                : !string.IsNullOrWhiteSpace(msg.From?.Address)
+                                    ? msg.From!.Address
+                                    : "(unknown sender)",
+            to              = msg.ToRecipients.Select(t => t.Address).ToArray(),
+            cc              = msg.CcRecipients.Select(t => t.Address).ToArray(),
+            bcc             = msg.BccRecipients.Select(t => t.Address).ToArray(),
+            subject         = msg.Subject,
+            preview         = msg.BodyPreview,
+            bodyHtml        = msg.BodyHtml ?? msg.BodyText ?? string.Empty,
+            receivedAt      = msg.ReceivedAt,
+            isRead          = msg.IsRead,
+            hasAttachments  = msg.HasAttachments,
+            attachments     = msg.Attachments.Select(a => new
+            {
+                id          = a.Id,
+                name        = a.Name,
+                contentType = a.ContentType,
+                size        = a.Size,
+                isInline    = a.IsInline,
+            }).ToArray(),
+            linkedContactId   = link?.ContactId,
+            linkedContactName = link?.contactName,
+            linkedDealId      = link?.DealId,
+            linkedDealTitle   = link?.dealTitle,
+            linkedPropertyId  = link?.PropertyId,
+            isArchived        = link?.IsArchived ?? false,
+        });
     }
 
     [HttpGet("messages/{messageId}/attachments/{attachmentId}")]
