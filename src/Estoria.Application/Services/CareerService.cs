@@ -75,9 +75,13 @@ public class CareerService
             ? enTrans.Title
             : dto.Translations.Values.First().Title;
 
+        var baseSlug = SlugHelper.GenerateSlug(enTitle);
+        var slug = await SlugHelper.UniqueAsync(baseSlug,
+            s => _db.CareerPostings.AnyAsync(x => x.Slug == s, ct));
+
         var posting = new CareerPosting
         {
-            Slug = SlugHelper.GenerateSlug(enTitle)
+            Slug = slug
         };
 
         foreach (var (lang, trans) in dto.Translations)
@@ -107,7 +111,9 @@ public class CareerService
             ? enTrans.Title
             : dto.Translations.Values.First().Title;
 
-        posting.Slug = SlugHelper.GenerateSlug(enTitle);
+        var baseSlug = SlugHelper.GenerateSlug(enTitle);
+        posting.Slug = await SlugHelper.UniqueAsync(baseSlug,
+            s => _db.CareerPostings.AnyAsync(x => x.Slug == s && x.Id != id, ct));
 
         _db.CareerPostingTranslations.RemoveRange(posting.Translations);
         posting.Translations.Clear();

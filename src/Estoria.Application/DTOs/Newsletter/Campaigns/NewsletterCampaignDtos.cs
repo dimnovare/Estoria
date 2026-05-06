@@ -29,4 +29,8 @@ public class NewsletterCampaignSendDto
 
     /// <summary>Null = every active subscriber regardless of preferred language.</summary>
     public Language? Language { get; set; }
+
+    /// <summary>When set, send only to this address (test mode). No full campaign blast occurs.</summary>
+    [EmailAddress, MaxLength(256)]
+    public string? TestRecipientEmail { get; set; }
 }

@@ -109,9 +109,13 @@ public class BlogService
             ? enTrans.Title
             : dto.Translations.Values.First().Title;
 
+        var baseSlug = SlugHelper.GenerateSlug(enTitle);
+        var slug = await SlugHelper.UniqueAsync(baseSlug,
+            s => _db.BlogPosts.AnyAsync(b => b.Slug == s, ct));
+
         var post = new BlogPost
         {
-            Slug = SlugHelper.GenerateSlug(enTitle),
+            Slug = slug,
             AuthorId = dto.AuthorId,
             CoverImageUrl = dto.CoverImageUrl
         };
@@ -153,7 +157,9 @@ public class BlogService
             ? enTrans.Title
             : dto.Translations.Values.First().Title;
 
-        post.Slug = SlugHelper.GenerateSlug(enTitle);
+        var baseSlug = SlugHelper.GenerateSlug(enTitle);
+        post.Slug = await SlugHelper.UniqueAsync(baseSlug,
+            s => _db.BlogPosts.AnyAsync(b => b.Slug == s && b.Id != id, ct));
         post.AuthorId = dto.AuthorId;
         post.CoverImageUrl = dto.CoverImageUrl;
 
@@ -179,6 +185,25 @@ public class BlogService
             entityType: nameof(BlogPost),
             entityId: post.Id,
             details: new { post.Slug, post.AuthorId },
+            ct: ct);
+    }
+
+    public async Task SetStatusAsync(
+        Guid id, BlogPostStatus status, CancellationToken ct = default)
+    {
+        var post = await _db.BlogPosts.FindAsync([id], ct)
+            ?? throw new KeyNotFoundException($"BlogPost {id} not found.");
+
+        post.Status = status;
+        if (status == BlogPostStatus.Published && post.PublishedAt is null)
+            post.PublishedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync("Blog.SetStatus",
+            entityType: nameof(BlogPost),
+            entityId: id,
+            details: new { status },
             ct: ct);
     }
 

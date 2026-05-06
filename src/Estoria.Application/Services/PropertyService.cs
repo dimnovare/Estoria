@@ -262,9 +262,13 @@ public class PropertyService
             ? enTrans.Title
             : dto.Translations.Values.First().Title;
 
+        var baseSlug = SlugHelper.GenerateSlug(enTitle);
+        var slug = await SlugHelper.UniqueAsync(baseSlug,
+            s => _db.Properties.AnyAsync(p => p.Slug == s, ct));
+
         var property = new Property
         {
-            Slug = SlugHelper.GenerateSlug(enTitle),
+            Slug = slug,
             TransactionType = dto.TransactionType,
             PropertyType = dto.PropertyType,
             Price = dto.Price,
@@ -354,7 +358,9 @@ public class PropertyService
             ? enTrans.Title
             : dto.Translations.Values.First().Title;
 
-        property.Slug = SlugHelper.GenerateSlug(enTitle);
+        var baseSlug = SlugHelper.GenerateSlug(enTitle);
+        property.Slug = await SlugHelper.UniqueAsync(baseSlug,
+            s => _db.Properties.AnyAsync(p => p.Slug == s && p.Id != id, ct));
         property.TransactionType = dto.TransactionType;
         property.PropertyType = dto.PropertyType;
         property.Price = dto.Price;

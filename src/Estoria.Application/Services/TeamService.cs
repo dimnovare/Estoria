@@ -109,9 +109,13 @@ public class TeamService
             ? enTrans.Name
             : dto.Translations.Values.First().Name;
 
+        var baseSlug = SlugHelper.GenerateSlug(enName);
+        var slug = await SlugHelper.UniqueAsync(baseSlug,
+            s => _db.TeamMembers.AnyAsync(m => m.Slug == s, ct));
+
         var member = new TeamMember
         {
-            Slug = SlugHelper.GenerateSlug(enName),
+            Slug = slug,
             PhotoUrl = dto.PhotoUrl,
             Phone = dto.Phone,
             Email = dto.Email,
@@ -154,7 +158,9 @@ public class TeamService
             ? enTrans.Name
             : dto.Translations.Values.First().Name;
 
-        member.Slug = SlugHelper.GenerateSlug(enName);
+        var baseSlug = SlugHelper.GenerateSlug(enName);
+        member.Slug = await SlugHelper.UniqueAsync(baseSlug,
+            s => _db.TeamMembers.AnyAsync(m => m.Slug == s && m.Id != id, ct));
         member.PhotoUrl = dto.PhotoUrl;
         member.Phone = dto.Phone;
         member.Email = dto.Email;

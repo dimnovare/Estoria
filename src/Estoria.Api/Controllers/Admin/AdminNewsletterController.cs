@@ -68,7 +68,7 @@ public class AdminNewsletterController : ControllerBase
     {
         if (!ModelState.IsValid) return ValidationProblem(ModelState);
 
-        var id = await _svc.SendCampaignNowAsync(dto.Subject, dto.BodyHtml, dto.Language, ct);
+        var id = await _svc.SendCampaignNowAsync(dto.Subject, dto.BodyHtml, dto.Language, dto.TestRecipientEmail, ct);
         var campaign = await _svc.GetCampaignByIdAsync(id, ct);
         return Ok(campaign);
     }

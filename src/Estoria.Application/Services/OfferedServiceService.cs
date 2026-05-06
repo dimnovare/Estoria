@@ -85,9 +85,13 @@ public class OfferedServiceService
             ? enTrans.Name
             : dto.Translations.Values.First().Name;
 
+        var baseSlug = SlugHelper.GenerateSlug(enName);
+        var slug = await SlugHelper.UniqueAsync(baseSlug,
+            s => _db.Services.AnyAsync(x => x.Slug == s, ct));
+
         var service = new Service
         {
-            Slug = SlugHelper.GenerateSlug(enName),
+            Slug = slug,
             IconName = dto.IconName,
             SortOrder = dto.SortOrder
         };
@@ -119,7 +123,9 @@ public class OfferedServiceService
             ? enTrans.Name
             : dto.Translations.Values.First().Name;
 
-        service.Slug = SlugHelper.GenerateSlug(enName);
+        var baseSlug = SlugHelper.GenerateSlug(enName);
+        service.Slug = await SlugHelper.UniqueAsync(baseSlug,
+            s => _db.Services.AnyAsync(x => x.Slug == s && x.Id != id, ct));
         service.IconName = dto.IconName;
         service.SortOrder = dto.SortOrder;
 

@@ -203,8 +203,49 @@ public class NewsletterService
         string subject,
         string bodyHtml,
         Language? languageFilter,
+        string? testRecipientEmail,
         CancellationToken ct = default)
     {
+        var isTest = !string.IsNullOrWhiteSpace(testRecipientEmail);
+
+        if (isTest)
+        {
+            // Test mode: send to one address only, no subscriber blast.
+            var ok = await _email.SendNewsletterCampaignAsync(
+                toEmail:          testRecipientEmail!,
+                lang:             languageFilter ?? Language.En,
+                subject:          subject.Trim(),
+                bodyHtml:         bodyHtml,
+                unsubscribeToken: string.Empty,
+                ct:               ct);
+
+            var testCampaign = new NewsletterCampaign
+            {
+                Subject         = $"[TEST] {subject.Trim()}",
+                BodyHtml        = bodyHtml,
+                LanguageFilter  = languageFilter,
+                Status          = ok ? NewsletterCampaignStatus.Sent : NewsletterCampaignStatus.Failed,
+                StartedAt       = DateTime.UtcNow,
+                CompletedAt     = DateTime.UtcNow,
+                RecipientsCount = 1,
+                SuccessCount    = ok ? 1 : 0,
+                FailureCount    = ok ? 0 : 1,
+                SentByUserId    = _currentUser.UserId ?? Guid.Empty,
+            };
+
+            _db.NewsletterCampaigns.Add(testCampaign);
+            await _db.SaveChangesAsync(ct);
+
+            await _audit.LogAsync(
+                "Newsletter.Send",
+                entityType: nameof(NewsletterCampaign),
+                entityId: testCampaign.Id,
+                details: new { testCampaign.Id, testCampaign.RecipientsCount, isTest },
+                ct: ct);
+
+            return testCampaign.Id;
+        }
+
         var campaign = new NewsletterCampaign
         {
             Subject        = subject.Trim(),
@@ -270,17 +311,10 @@ public class NewsletterService
         await _db.SaveChangesAsync(ct);
 
         await _audit.LogAsync(
-            "Newsletter.SendCampaign",
+            "Newsletter.Send",
             entityType: nameof(NewsletterCampaign),
             entityId: campaign.Id,
-            details: new
-            {
-                campaign.Subject,
-                LanguageFilter = languageFilter?.ToString(),
-                campaign.RecipientsCount,
-                campaign.SuccessCount,
-                campaign.FailureCount,
-            },
+            details: new { campaign.Id, campaign.RecipientsCount, isTest },
             ct: ct);
 
         return campaign.Id;

@@ -1,5 +1,6 @@
 using Estoria.Application.DTOs.Blog;
 using Estoria.Application.Services;
+using Estoria.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -47,6 +48,16 @@ public class AdminBlogController : ControllerBase
         return NoContent();
     }
 
+    [HttpPatch("{id:guid}/status")]
+    public async Task<IActionResult> SetStatus(
+        Guid id,
+        [FromBody] SetBlogStatusBody body,
+        CancellationToken ct = default)
+    {
+        await _svc.SetStatusAsync(id, body.Status, ct);
+        return NoContent();
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct = default)
     {
@@ -54,3 +65,5 @@ public class AdminBlogController : ControllerBase
         return NoContent();
     }
 }
+
+public record SetBlogStatusBody(BlogPostStatus Status);
