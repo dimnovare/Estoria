@@ -80,3 +80,32 @@ When the backend lands, flip the flag to true. Backend additions needed:
 - `DealParticipantWriteDto` + service methods in `DealService.cs` with the
   usual `RequireOwnershipOrAdmin(deal.AssignedAgentId)` guard
 - Audit log entries (`Deal.AddParticipant` / `Deal.RemoveParticipant`)
+
+
+## Per-page meta tags (react-helmet-async)
+
+The static `index.html` provides global SEO defaults: title, description,
+OG/Twitter tags, JSON-LD Organization, favicons. Per-page overrides require
+a runtime mechanism — typically `react-helmet-async` — so that property
+detail pages can ship their own `<title>`, og:image, og:description, etc.
+
+We deliberately did NOT add the dependency in the SEO infrastructure pass
+because:
+- It pulls a transitive of `react-fast-compare` and `prop-types`
+- The Provider must wrap the app at the root, which is a small refactor
+- For SSR/hydration parity, `react-helmet-async` (vs `react-helmet`) is
+  required — we'd commit to the async variant.
+
+Touch points when this lands:
+- `npm i react-helmet-async`
+- Wrap `<App/>` in `<HelmetProvider>` in `src/main.tsx`
+- Add `<Helmet>` blocks to `PropertyDetail.tsx`, `BlogPost.tsx`,
+  `TeamMemberDetail.tsx`, `CareerDetail.tsx` with per-record overrides
+- Replace the imperative `useEffect`-based JSON-LD injection in
+  `PropertyDetail.tsx` with a declarative `<script type='application/ld+json'>`
+  child of `<Helmet>`
+
+Until then, the `useEffect` pattern (introduced for the property JSON-LD)
+remains the way to inject per-page meta — it works but is imperative and
+doesn't surface in static-HTML view-source.
+

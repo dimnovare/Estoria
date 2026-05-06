@@ -943,6 +943,10 @@ public class DataSeeder
             ("contact.phone",             "+372 600 1234",                           SettingValueType.Text),
             ("contact.address",           "Katusepapi 6, Tallinn 11412, Estonia",    SettingValueType.Text),
             ("contact.hours",             "Mon–Fri 09:00–18:00, Sat 10:00–15:00", SettingValueType.Text),
+            // Tallinn city-centre fallback — UpsertAsync auto-overwrites
+            // these whenever an admin edits contact.address.
+            ("contact.latitude",          "59.437000",                               SettingValueType.Number),
+            ("contact.longitude",         "24.753600",                               SettingValueType.Number),
             ("social.facebook",           "",                                        SettingValueType.Text),
             ("social.instagram",          "",                                        SettingValueType.Text),
             ("social.linkedin",           "",                                        SettingValueType.Text),
@@ -952,6 +956,9 @@ public class DataSeeder
             // Private (admin-only)
             ("watermark.enabled",         "true",                                    SettingValueType.Boolean),
             ("watermark.text",            "ESTORIA",                                 SettingValueType.Text),
+            // Path is relative to wwwroot — the API serves it via UseStaticFiles
+            // in dev, and Magick reads it directly off disk regardless of env.
+            ("watermark.image_path",      "/watermarks/estoria-mark.png",            SettingValueType.Text),
             ("ai.descriptions_enabled",   "false",                                   SettingValueType.Boolean),
             ("ai.replies_enabled",        "false",                                   SettingValueType.Boolean),
             ("birthday.auto_send",        "false",                                   SettingValueType.Boolean),

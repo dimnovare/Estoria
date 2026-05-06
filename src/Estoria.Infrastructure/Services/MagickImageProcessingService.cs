@@ -2,6 +2,7 @@ using Estoria.Application.Interfaces;
 using Estoria.Application.Services;
 using ImageMagick;
 using ImageMagick.Drawing;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Estoria.Infrastructure.Services;
@@ -16,15 +17,18 @@ public class MagickImageProcessingService : IImageProcessingService
 {
     private readonly IFileStorageService _storage;
     private readonly SiteSettingService _settings;
+    private readonly IWebHostEnvironment _env;
     private readonly ILogger<MagickImageProcessingService> _logger;
 
     public MagickImageProcessingService(
         IFileStorageService storage,
         SiteSettingService settings,
+        IWebHostEnvironment env,
         ILogger<MagickImageProcessingService> logger)
     {
         _storage  = storage;
         _settings = settings;
+        _env      = env;
         _logger   = logger;
     }
 
@@ -35,11 +39,18 @@ public class MagickImageProcessingService : IImageProcessingService
         CancellationToken ct = default)
     {
         // Watermark is the AND of the caller's request and the global toggle —
-        // either side can disable. Text comes from SiteSettings so marketing
-        // can edit it without a deploy.
+        // either side can disable. Text + image path come from SiteSettings so
+        // marketing can edit them without a deploy. The image path takes
+        // precedence; if the file is missing we fall back to the text mark.
         var globalEnabled = await _settings.GetBoolAsync("watermark.enabled", true, ct);
         var effectiveWatermark = watermark && globalEnabled;
-        var watermarkText = await _settings.GetStringAsync("watermark.text", "ESTORIA", ct);
+        var watermarkText      = await _settings.GetStringAsync("watermark.text",       "ESTORIA",                       ct);
+        var watermarkImagePath = await _settings.GetStringAsync("watermark.image_path", "/watermarks/estoria-mark.png", ct);
+
+        // Resolve the image once — Magick can compose from a single decoded
+        // copy if we re-load per variant, but this keeps the I/O outside the
+        // per-variant hot path and lets us know upfront whether to fall back.
+        var resolvedWatermarkPath = ResolveWatermarkPath(watermarkImagePath);
 
         // Buffer once. We re-read from byte[] for each variant since each
         // MagickImage owns its decoded buffer and we don't want them sharing.
@@ -67,7 +78,7 @@ public class MagickImageProcessingService : IImageProcessingService
             applyTransform: img =>
             {
                 ResizeCover(img, 400, 300);
-                if (effectiveWatermark) DrawWatermark(img, watermarkText, WatermarkPlacement.BottomRight, fontSize: 14);
+                if (effectiveWatermark) ApplyWatermark(img, resolvedWatermarkPath, watermarkText, fallbackFontSize: 14, fallbackPlacement: WatermarkPlacement.BottomRight);
                 img.Format  = MagickFormat.Jpeg;
                 img.Quality = 85;
             },
@@ -82,7 +93,7 @@ public class MagickImageProcessingService : IImageProcessingService
             applyTransform: img =>
             {
                 ResizeContain(img, 1200, 800);
-                if (effectiveWatermark) DrawWatermark(img, watermarkText, WatermarkPlacement.Center, fontSize: 32);
+                if (effectiveWatermark) ApplyWatermark(img, resolvedWatermarkPath, watermarkText, fallbackFontSize: 32, fallbackPlacement: WatermarkPlacement.Center);
                 img.Format  = MagickFormat.WebP;
                 img.Quality = 85;
             },
@@ -97,13 +108,99 @@ public class MagickImageProcessingService : IImageProcessingService
             applyTransform: img =>
             {
                 ResizeContain(img, 2000, 1400);
-                if (effectiveWatermark) DrawWatermark(img, watermarkText, WatermarkPlacement.Center, fontSize: 48);
+                if (effectiveWatermark) ApplyWatermark(img, resolvedWatermarkPath, watermarkText, fallbackFontSize: 48, fallbackPlacement: WatermarkPlacement.Center);
                 img.Format  = MagickFormat.WebP;
                 img.Quality = 90;
             },
             ct: ct));
 
         return variants;
+    }
+
+    // ── Watermark composite (image-first, text fallback) ──────────────────────
+    //
+    // Operator note: to backfill existing variants with the new logo
+    // watermark, run reprocess on each PropertyImage. SQL convenience for the
+    // bulk case (then enqueue Hangfire jobs separately, since Postgres can't
+    // call into the .NET worker directly):
+    //
+    //   UPDATE "PropertyImages" SET "ProcessingStatus" = 0;
+    //
+    // The Hangfire enqueue is operator-driven via /admin/property-images/{id}/reprocess
+    // — this is intentional, not auto, so a bad watermark pass doesn't churn
+    // the entire library on accidental config flips.
+
+    /// <summary>
+    /// Resolve the watermark image path against wwwroot. Returns null when
+    /// the configured path is empty or the file isn't present on disk —
+    /// callers fall back to the text watermark in that case.
+    /// </summary>
+    private string? ResolveWatermarkPath(string configuredPath)
+    {
+        if (string.IsNullOrWhiteSpace(configuredPath)) return null;
+
+        var webRoot = _env.WebRootPath;
+        if (string.IsNullOrEmpty(webRoot)) return null;
+
+        var fullPath = Path.Combine(webRoot, configuredPath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(fullPath))
+        {
+            _logger.LogWarning(
+                "WATERMARK_MISSING path={Path} — falling back to text watermark",
+                fullPath);
+            return null;
+        }
+        return fullPath;
+    }
+
+    /// <summary>
+    /// Composite the configured watermark image, sized proportional to the
+    /// variant (1/6th width, capped at 200px) and anchored bottom-right with
+    /// a 20px inset. Falls through to <see cref="DrawWatermark"/> when the
+    /// image path didn't resolve, preserving the legacy text-watermark
+    /// behavior so nothing degrades silently when an admin clears the path
+    /// or the file goes missing.
+    /// </summary>
+    private void ApplyWatermark(
+        MagickImage img,
+        string? watermarkImagePath,
+        string fallbackText,
+        int fallbackFontSize,
+        WatermarkPlacement fallbackPlacement)
+    {
+        if (watermarkImagePath is null)
+        {
+            DrawWatermark(img, fallbackText, fallbackPlacement, fallbackFontSize);
+            return;
+        }
+
+        try
+        {
+            using var watermark = new MagickImage(watermarkImagePath);
+
+            // Size to ~1/6 of the base image's width, capped at 200px so a
+            // very large source doesn't get a giant mark. Width=0 lets
+            // Magick recompute height to preserve aspect ratio.
+            var targetWidth = (uint)Math.Min((int)img.Width / 6, 200);
+            if (targetWidth < 32) targetWidth = 32;
+            watermark.Resize(targetWidth, 0);
+
+            // Enforce ~55% opacity even if the source PNG is fully opaque.
+            // Multiply on the alpha channel scales whatever transparency
+            // already exists in the source down by the same factor.
+            watermark.Evaluate(Channels.Alpha, EvaluateOperator.Multiply, 0.55);
+
+            // Bottom-right with a 20px inset for every variant. Centered
+            // composites looked too busy on photo backgrounds in v1.
+            img.Composite(watermark, Gravity.Southeast, 20, 20, CompositeOperator.Over);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "WATERMARK_COMPOSITE_FAIL path={Path} — falling back to text",
+                watermarkImagePath);
+            DrawWatermark(img, fallbackText, fallbackPlacement, fallbackFontSize);
+        }
     }
 
     // ── Internals ─────────────────────────────────────────────────────────────

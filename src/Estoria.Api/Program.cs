@@ -226,6 +226,21 @@ var app = builder.Build();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<LanguageMiddleware>();
 
+// Security headers — applied to every API response. Browser-side enforcement
+// for the API surface; Vercel injects an equivalent (broader) set for the
+// frontend bundle. We don't ship a CSP here because the API serves JSON,
+// not HTML — CSP is meaningless on a non-HTML response.
+app.Use(async (ctx, next) =>
+{
+    var headers = ctx.Response.Headers;
+    headers["X-Content-Type-Options"]      = "nosniff";
+    headers["X-Frame-Options"]             = "DENY";
+    headers["Referrer-Policy"]             = "no-referrer";
+    headers["Permissions-Policy"]          = "camera=(), microphone=(), geolocation=()";
+    headers["Strict-Transport-Security"]   = "max-age=63072000; includeSubDomains";
+    await next();
+});
+
 app.UseSwagger();
 app.UseSwaggerUI();
 

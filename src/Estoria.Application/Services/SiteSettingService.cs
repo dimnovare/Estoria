@@ -4,6 +4,7 @@ using Estoria.Application.Interfaces;
 using Estoria.Domain.Entities;
 using Estoria.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Estoria.Application.Services;
 
@@ -17,6 +18,10 @@ public class SiteSettingService
         "contact.phone",
         "contact.address",
         "contact.hours",
+        // Auto-populated by UpsertAsync when contact.address changes — exposed
+        // publicly so the Contact-page map can read them on the public site.
+        "contact.latitude",
+        "contact.longitude",
         "social.facebook",
         "social.instagram",
         "social.linkedin",
@@ -37,8 +42,18 @@ public class SiteSettingService
     };
 
     private readonly IAppDbContext _db;
+    private readonly IGeocoder _geocoder;
+    private readonly ILogger<SiteSettingService> _logger;
 
-    public SiteSettingService(IAppDbContext db) => _db = db;
+    public SiteSettingService(
+        IAppDbContext db,
+        IGeocoder geocoder,
+        ILogger<SiteSettingService> logger)
+    {
+        _db       = db;
+        _geocoder = geocoder;
+        _logger   = logger;
+    }
 
     /// <summary>
     /// Returns every setting. When <paramref name="lang"/> is supplied, keys in
@@ -140,6 +155,41 @@ public class SiteSettingService
         }
 
         await _db.SaveChangesAsync(ct);
+
+        // Auto-geocode when the contact address changes so the Contact-page
+        // map pin tracks the new location. Best-effort: failures don't block
+        // the address save, the admin can still type lat/lng manually.
+        if (key == "contact.address" && !string.IsNullOrWhiteSpace(value))
+        {
+            try
+            {
+                var coords = await _geocoder.GeocodeAsync(value, ct);
+                if (coords is not null)
+                {
+                    await UpsertAsync(
+                        "contact.latitude",
+                        coords.Latitude.ToString("F6", CultureInfo.InvariantCulture),
+                        SettingValueType.Number,
+                        ct);
+                    await UpsertAsync(
+                        "contact.longitude",
+                        coords.Longitude.ToString("F6", CultureInfo.InvariantCulture),
+                        SettingValueType.Number,
+                        ct);
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "GEOCODE_NORESULT key=contact.address address={Address}", value);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "GEOCODE_FAILED key=contact.address address={Address}", value);
+                // Swallow — admin still gets to fix coords manually.
+            }
+        }
     }
 
     /// <summary>
