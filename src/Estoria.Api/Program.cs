@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Estoria.Api.Configuration;
 using Estoria.Api.Middleware;
+using Estoria.Api.ModelBinding;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Estoria.Application;
@@ -103,7 +104,13 @@ foreach (var (envVar, configKey) in new[]
         builder.Configuration[configKey] = value;
 }
 
-builder.Services.AddControllers()
+builder.Services.AddControllers(options =>
+    {
+        // Tolerant binder for ?lang= query/route params — accepts en-US,
+        // en, EN, ENG-us, etc. Unparseable values become null instead of
+        // returning 400, so endpoints fall back to their default language.
+        options.ModelBinderProviders.Insert(0, new CaseInsensitiveLanguageBinderProvider());
+    })
     .AddJsonOptions(o =>
     {
         o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
