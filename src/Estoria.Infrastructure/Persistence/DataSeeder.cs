@@ -992,11 +992,13 @@ public class DataSeeder
 
     /// <summary>
     /// Seeds Et/Ru translations for the small set of user-facing copy
-    /// settings (contact.hours, contact.address). Idempotent per
-    /// (settingId, language) — admin edits are not overwritten on subsequent
-    /// runs because we only insert when no row exists for that pair.
+    /// settings (contact.hours, contact.address). Uses ExecuteUpdateAsync so
+    /// the UPDATE bypasses EF change tracking and the concurrency-token WHERE
+    /// clause that caused DbUpdateConcurrencyException when SaveChangesAsync
+    /// stamped UpdatedAt after loading tracked rows. Falls back to an insert
+    /// when no row exists yet.
     /// </summary>
-    private async Task SeedSiteSettingTranslationsAsync()
+    private async Task SeedSiteSettingTranslationsAsync(CancellationToken ct = default)
     {
         var seeds = new (string Key, Language Lang, string Value)[]
         {
@@ -1006,27 +1008,31 @@ public class DataSeeder
             ("contact.address", Language.Ru, "Katusepapi 6, Таллин 11412, Эстония"),
         };
 
-        var inserted = false;
         foreach (var (key, lang, value) in seeds)
         {
             var setting = await _db.SiteSettings
-                .Include(s => s.Translations)
-                .FirstOrDefaultAsync(s => s.Key == key);
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Key == key, ct);
             if (setting is null) continue;
 
-            if (setting.Translations.Any(t => t.Language == lang)) continue;
+            // Try update first. If 0 rows affected, insert.
+            var updated = await _db.SiteSettingTranslations
+                .Where(t => t.SiteSettingId == setting.Id && t.Language == lang)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(t => t.Value, value)
+                    .SetProperty(t => t.UpdatedAt, DateTime.UtcNow), ct);
 
-            setting.Translations.Add(new SiteSettingTranslation
+            if (updated == 0)
             {
-                SiteSettingId = setting.Id,
-                Language      = lang,
-                Value         = value,
-            });
-            inserted = true;
+                _db.SiteSettingTranslations.Add(new SiteSettingTranslation
+                {
+                    SiteSettingId = setting.Id,
+                    Language      = lang,
+                    Value         = value,
+                });
+                await _db.SaveChangesAsync(ct);
+            }
         }
-
-        if (inserted)
-            await _db.SaveChangesAsync();
     }
 
     // ── Birthday template ─────────────────────────────────────────────────────
