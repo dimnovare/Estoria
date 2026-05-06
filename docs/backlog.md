@@ -138,3 +138,29 @@ fixes need:
 
 Defer to P5 — not worth the regression risk for the remaining couple of
 Lighthouse points.
+
+## P3.1.1 — Inbox Sent folder + advanced filters
+
+The /admin/inbox sidebar already lists Inbox / Sent / Archive / All folders,
+but the backend ListInboxAsync only ever queries the Inbox mail-folder; Sent
+and All currently fall through to the same Inbox listing. Advanced filters
+(unreadOnly is the only one wired today; hasAttachments + linkedToDeal are
+stubbed in the frontend `FilterChip` set without server support) likewise
+don't reach Graph.
+
+Backend touch points when this lands:
+
+- `GraphMailService.ListInboxAsync` → split into per-folder calls,
+  e.g. `_graph.Users[mailbox].MailFolders["SentItems"].Messages.GetAsync(...)`.
+  Add a `folder` parameter to the controller + service.
+- For the "All" folder, query at the user level (`_graph.Users[mailbox].Messages`)
+  instead of scoping to a folder.
+- `hasAttachments eq true` is a Graph-supported $filter — extend the existing
+  `unreadOnly` branch in the request-config lambda to compose multiple filters.
+- `linkedToDeal` has no Graph equivalent; resolve it as a JOIN against
+  `MailboxLink` where DealId IS NOT NULL, then intersect ids before the
+  Graph fetch (or after — N is small).
+
+Frontend wiring already passes `folder` + `unread`/`hasAttachments`/`linkedToDeal`
+in the query params, so this is a backend-only follow-up. Once the backend
+honors them, the UI starts working without further changes.
