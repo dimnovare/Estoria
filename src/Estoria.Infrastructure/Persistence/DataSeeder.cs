@@ -974,6 +974,47 @@ public class DataSeeder
 
         if (inserted)
             await _db.SaveChangesAsync();
+
+        await SeedSiteSettingTranslationsAsync();
+    }
+
+    /// <summary>
+    /// Seeds Et/Ru translations for the small set of user-facing copy
+    /// settings (contact.hours, contact.address). Idempotent per
+    /// (settingId, language) — admin edits are not overwritten on subsequent
+    /// runs because we only insert when no row exists for that pair.
+    /// </summary>
+    private async Task SeedSiteSettingTranslationsAsync()
+    {
+        var seeds = new (string Key, Language Lang, string Value)[]
+        {
+            ("contact.hours",   Language.Et, "E–R 09:00–18:00, L 10:00–15:00"),
+            ("contact.hours",   Language.Ru, "Пн–Пт 09:00–18:00, Сб 10:00–15:00"),
+            ("contact.address", Language.Et, "Katusepapi 6, Tallinn 11412, Eesti"),
+            ("contact.address", Language.Ru, "Katusepapi 6, Таллин 11412, Эстония"),
+        };
+
+        var inserted = false;
+        foreach (var (key, lang, value) in seeds)
+        {
+            var setting = await _db.SiteSettings
+                .Include(s => s.Translations)
+                .FirstOrDefaultAsync(s => s.Key == key);
+            if (setting is null) continue;
+
+            if (setting.Translations.Any(t => t.Language == lang)) continue;
+
+            setting.Translations.Add(new SiteSettingTranslation
+            {
+                SiteSettingId = setting.Id,
+                Language      = lang,
+                Value         = value,
+            });
+            inserted = true;
+        }
+
+        if (inserted)
+            await _db.SaveChangesAsync();
     }
 
     // ── Birthday template ─────────────────────────────────────────────────────

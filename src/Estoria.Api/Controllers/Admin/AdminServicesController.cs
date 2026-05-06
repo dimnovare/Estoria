@@ -21,8 +21,7 @@ public class AdminServicesController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
-        var all = await _svc.GetAllAdminAsync(Domain.Enums.Language.En, ct);
-        var result = all.FirstOrDefault(s => s.Id == id);
+        var result = await _svc.GetAdminDetailByIdAsync(id, ct);
         return result is null ? NotFound() : Ok(result);
     }
 

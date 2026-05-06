@@ -33,6 +33,13 @@ public class MailboxLink : BaseEntity
 
     public bool IsArchived { get; set; }
 
+    /// <summary>
+    /// Mirrors Graph's <c>isRead</c> flag at sync time. Kept in our table so
+    /// the inbox sidebar's "Unread" count doesn't need a Graph round-trip.
+    /// Outbound rows default to true (we sent them, they're trivially "read").
+    /// </summary>
+    public bool IsRead { get; set; }
+
     public Contact? Contact { get; set; }
     public Deal? Deal { get; set; }
     public Property? Property { get; set; }

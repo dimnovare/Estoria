@@ -1,3 +1,4 @@
+using Estoria.Application.DTOs.Inbox;
 using Estoria.Application.DTOs.Mailbox;
 using Estoria.Application.Interfaces;
 using Estoria.Domain.Entities;
@@ -104,7 +105,18 @@ public class MailboxLinkService
 
         var existing = await _db.MailboxLinks
             .FirstOrDefaultAsync(l => l.GraphMessageId == msg.Id, ct);
-        if (existing is not null) return false;
+        if (existing is not null)
+        {
+            // Re-syncing an already-known message: keep IsRead in step with
+            // Graph (someone may have read it from Outlook between ticks) so
+            // the sidebar Unread count reflects reality.
+            if (existing.IsRead != msg.IsRead)
+            {
+                existing.IsRead = msg.IsRead;
+                await _db.SaveChangesAsync(ct);
+            }
+            return false;
+        }
 
         var fromEmail = msg.From?.Address?.Trim() ?? string.Empty;
 
@@ -131,6 +143,7 @@ public class MailboxLinkService
             Subject             = Truncate(msg.Subject, 500),
             FromAddress         = Truncate(fromEmail, 320),
             ReceivedAt          = msg.ReceivedAt ?? DateTime.UtcNow,
+            IsRead              = msg.IsRead,
         };
 
         _db.MailboxLinks.Add(link);
@@ -256,6 +269,50 @@ public class MailboxLinkService
     }
 
     /// <summary>
+    /// Mirrors a Graph MarkRead call into the local link row so the inbox
+    /// sidebar's Unread count stays correct without waiting for the next
+    /// delta sync.
+    /// </summary>
+    public async Task MirrorReadStatusAsync(
+        string graphMessageId,
+        bool isRead,
+        CancellationToken ct = default)
+    {
+        var link = await _db.MailboxLinks
+            .FirstOrDefaultAsync(l => l.GraphMessageId == graphMessageId, ct);
+        if (link is null) return;
+
+        if (link.IsRead == isRead) return;
+        link.IsRead = isRead;
+        await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Folder counts for the inbox sidebar. Backed by MailboxLink, not Graph
+    /// — the delta sync keeps the table fresh, and this stays cheap to call
+    /// on every page load.
+    /// </summary>
+    public async Task<InboxFolderCountsDto> GetFolderCountsAsync(CancellationToken ct = default)
+    {
+        var inbox = await _db.MailboxLinks
+            .CountAsync(m => !m.IsArchived && m.Direction == MailDirection.Inbound, ct);
+        var unread = await _db.MailboxLinks
+            .CountAsync(m => !m.IsArchived && m.Direction == MailDirection.Inbound && !m.IsRead, ct);
+        var sent = await _db.MailboxLinks
+            .CountAsync(m => m.Direction == MailDirection.Outbound, ct);
+        var archive = await _db.MailboxLinks
+            .CountAsync(m => m.IsArchived, ct);
+
+        return new InboxFolderCountsDto
+        {
+            Inbox   = inbox,
+            Unread  = unread,
+            Sent    = sent,
+            Archive = archive,
+        };
+    }
+
+    /// <summary>
     /// Records an outbound message we just sent. Distinct from inbound
     /// upsert because we already know what entities the agent linked the
     /// reply against (the controller passes them through).
@@ -287,6 +344,7 @@ public class MailboxLinkService
             Subject             = Truncate(subject, 500),
             FromAddress         = string.Empty,
             ReceivedAt          = DateTime.UtcNow,
+            IsRead              = true,
         });
 
         await _db.SaveChangesAsync(ct);

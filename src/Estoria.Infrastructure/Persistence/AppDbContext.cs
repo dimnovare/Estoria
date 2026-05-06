@@ -35,6 +35,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<ContactMessage> ContactMessages => Set<ContactMessage>();
 
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
+    public DbSet<SiteSettingTranslation> SiteSettingTranslations => Set<SiteSettingTranslation>();
 
     public DbSet<User> Users => Set<User>();
     public DbSet<UserRoleAssignment> UserRoles => Set<UserRoleAssignment>();

@@ -30,6 +30,7 @@ public interface IAppDbContext
     DbSet<ContactMessage> ContactMessages { get; }
 
     DbSet<SiteSetting> SiteSettings { get; }
+    DbSet<SiteSettingTranslation> SiteSettingTranslations { get; }
 
     DbSet<User> Users { get; }
     DbSet<UserRoleAssignment> UserRoles { get; }

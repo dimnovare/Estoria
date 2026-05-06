@@ -19,10 +19,15 @@ public class AdminSiteSettingsController : ControllerBase
     public async Task<IActionResult> GetAll(CancellationToken ct = default)
         => Ok(await _svc.GetAllAsync(publicOnly: false, ct: ct));
 
+    /// <summary>
+    /// For non-translatable keys returns { key, value, valueType, isTranslatable=false, translations:[] };
+    /// for translatable keys, the translations list is populated and the
+    /// admin form renders a language-tab editor instead of a single field.
+    /// </summary>
     [HttpGet("{key}")]
     public async Task<IActionResult> GetByKey(string key, CancellationToken ct = default)
     {
-        var result = await _svc.GetByKeyAsync(key, ct);
+        var result = await _svc.GetAdminDetailByKeyAsync(key, ct);
         return result is null ? NotFound() : Ok(result);
     }
 
@@ -41,14 +46,33 @@ public class AdminSiteSettingsController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Without ?lang= updates the base Value. With ?lang= and a translatable
+    /// key, upserts the matching translation row instead — leaves the base
+    /// Value as the fallback used by callers that don't supply a language.
+    /// </summary>
     [HttpPut("{key}")]
     public async Task<IActionResult> Update(
         string key,
         [FromBody] UpdateSiteSettingDto dto,
+        [FromQuery] Language? lang = null,
         CancellationToken ct = default)
     {
-        var existing = await _svc.GetByKeyAsync(key, ct);
+        var existing = await _svc.GetByKeyAsync(key, ct: ct);
         if (existing is null) return NotFound();
+
+        if (lang is { } language)
+        {
+            try
+            {
+                await _svc.UpsertTranslationAsync(key, language, dto.Value ?? string.Empty, ct);
+                return NoContent();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
 
         await _svc.UpsertAsync(key, dto.Value, existing.ValueType, ct);
         return NoContent();

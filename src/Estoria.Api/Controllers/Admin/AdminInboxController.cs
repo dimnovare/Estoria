@@ -43,6 +43,13 @@ public class AdminInboxController : ControllerBase
     //  Reads
     // ─────────────────────────────────────────────────────────────────────
 
+    [HttpGet("counts")]
+    public async Task<IActionResult> GetCounts(CancellationToken ct = default)
+    {
+        var counts = await _links.GetFolderCountsAsync(ct);
+        return Ok(counts);
+    }
+
     [HttpGet("messages")]
     public async Task<IActionResult> List(
         [FromQuery] int top              = 50,
@@ -140,6 +147,9 @@ public class AdminInboxController : ControllerBase
         CancellationToken ct = default)
     {
         await _mailbox.MarkReadAsync(messageId, body.IsRead, ct);
+        // Keep the local link row in lock-step so the sidebar Unread count
+        // updates immediately, without waiting for the next delta tick.
+        await _links.MirrorReadStatusAsync(messageId, body.IsRead, ct);
         return NoContent();
     }
 

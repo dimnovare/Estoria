@@ -80,6 +80,59 @@ public class AdminPropertiesController : ControllerBase
         return NoContent();
     }
 
+    // ── Geocode ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Forward-geocodes the property's English (or first-available) address
+    /// via Nominatim. Returns 200 with { latitude, longitude } on a hit, 404
+    /// when the address resolves to nothing, 400 when the property has no
+    /// address translation to work from. Audit-logs every call so we can
+    /// later debug "why is the pin in the ocean".
+    /// </summary>
+    [HttpPost("{id:guid}/geocode")]
+    public async Task<IActionResult> Geocode(
+        Guid id,
+        [FromServices] IGeocoder geocoder,
+        [FromServices] AuditService audit,
+        CancellationToken ct = default)
+    {
+        var prop = await _db.Properties
+            .AsNoTracking()
+            .Include(p => p.Translations)
+            .FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (prop is null) return NotFound();
+
+        var en = prop.Translations.FirstOrDefault(t => t.Language == Language.En)
+              ?? prop.Translations.FirstOrDefault();
+        if (en is null)
+            return BadRequest(new { error = "Property has no translations." });
+
+        var query = string.Join(", ", new[] { en.Address, en.City }
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
+
+        if (string.IsNullOrWhiteSpace(query))
+            return BadRequest(new { error = "Address is empty." });
+
+        var coords = await geocoder.GeocodeAsync(query, ct);
+
+        await audit.LogAsync(
+            "Property.Geocode",
+            entityType: nameof(Property),
+            entityId: id,
+            details: new
+            {
+                Query    = query,
+                Resolved = coords is not null,
+                coords?.Latitude,
+                coords?.Longitude,
+            },
+            ct: ct);
+
+        return coords is null
+            ? NotFound(new { error = "Address could not be geocoded." })
+            : Ok(coords);
+    }
+
     // ── Images ────────────────────────────────────────────────────────────────
 
     [HttpPost("{id:guid}/images")]

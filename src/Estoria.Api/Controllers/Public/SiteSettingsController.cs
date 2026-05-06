@@ -1,3 +1,4 @@
+using Estoria.Api.Extensions;
 using Estoria.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,7 +16,10 @@ public class SiteSettingsController : ControllerBase
 
     [HttpGet]
     public async Task<IActionResult> GetAll(CancellationToken ct = default)
-        => Ok(await _svc.GetAllAsync(publicOnly: true, ct));
+        => Ok(await _svc.GetAllAsync(
+            publicOnly: true,
+            lang: HttpContext.GetLanguage(),
+            ct: ct));
 
     [HttpGet("{key}")]
     public async Task<IActionResult> GetByKey(string key, CancellationToken ct = default)
@@ -23,7 +27,7 @@ public class SiteSettingsController : ControllerBase
         if (!SiteSettingService.PublicKeys.Contains(key))
             return NotFound();
 
-        var result = await _svc.GetByKeyAsync(key, ct);
+        var result = await _svc.GetByKeyAsync(key, lang: HttpContext.GetLanguage(), ct: ct);
         return result is null ? NotFound() : Ok(result);
     }
 }

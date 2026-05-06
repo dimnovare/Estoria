@@ -38,9 +38,7 @@ public class AdminTeamController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
-        // TeamService exposes GetBySlugAsync; provide Id-based lookup via full admin list
-        var all = await _svc.GetAllAdminAsync(Domain.Enums.Language.En, ct);
-        var result = all.FirstOrDefault(m => m.Id == id);
+        var result = await _svc.GetAdminDetailByIdAsync(id, ct);
         return result is null ? NotFound() : Ok(result);
     }
 

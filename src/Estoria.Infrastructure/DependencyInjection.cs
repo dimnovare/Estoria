@@ -61,6 +61,15 @@ public static class DependencyInjection
         // — re-creating per scope would defeat that cache.
         services.AddSingleton<IMailboxService, GraphMailService>();
 
+        // Nominatim geocoder. Typed HttpClient with the UA Nominatim's policy
+        // requires; the geocoder itself enforces the 1 req/s rate limit.
+        services.AddHttpClient<IGeocoder, NominatimGeocoder>(client =>
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "Estoria/1.0 (info@estoria.estate)");
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
+
         services.AddJobInfrastructure(config);
 
         return services;

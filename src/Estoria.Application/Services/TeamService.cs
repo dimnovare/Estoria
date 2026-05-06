@@ -67,6 +67,41 @@ public class TeamService
         return members.Select(m => ToListDto(m, lang)).ToList();
     }
 
+    /// <summary>
+    /// Full admin-edit shape — every translation bundled so the form can
+    /// pre-populate all language tabs from a single fetch. Replaces the old
+    /// "find in admin list" workaround on the GetById controller.
+    /// </summary>
+    public async Task<TeamMemberAdminDetailDto?> GetAdminDetailByIdAsync(
+        Guid id, CancellationToken ct = default)
+    {
+        var m = await _db.TeamMembers
+            .AsNoTracking()
+            .Include(x => x.Translations)
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (m is null) return null;
+
+        return new TeamMemberAdminDetailDto
+        {
+            Id        = m.Id,
+            Slug      = m.Slug,
+            PhotoUrl  = m.PhotoUrl,
+            Phone     = m.Phone,
+            Email     = m.Email,
+            Languages = m.Languages.ToList(),
+            SortOrder = m.SortOrder,
+            IsActive  = m.IsActive,
+            Translations = m.Translations.ToDictionary(
+                t => t.Language.ToString(),
+                t => new TeamTranslationDto
+                {
+                    Name = t.Name,
+                    Role = t.Role,
+                    Bio  = t.Bio,
+                }),
+        };
+    }
+
     public async Task<Guid> CreateAsync(
         CreateTeamMemberDto dto, CancellationToken ct = default)
     {

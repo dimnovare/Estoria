@@ -46,6 +46,38 @@ public class OfferedServiceService
         return services.Select(s => ToListDto(s, lang)).ToList();
     }
 
+    /// <summary>
+    /// Full admin-edit shape — bundles all translations so the form can
+    /// pre-populate every language tab from one fetch. Replaces the old
+    /// "find in admin list" workaround on the GetById controller.
+    /// </summary>
+    public async Task<ServiceAdminDetailDto?> GetAdminDetailByIdAsync(
+        Guid id, CancellationToken ct = default)
+    {
+        var s = await _db.Services
+            .AsNoTracking()
+            .Include(x => x.Translations)
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (s is null) return null;
+
+        return new ServiceAdminDetailDto
+        {
+            Id        = s.Id,
+            Slug      = s.Slug,
+            IconName  = s.IconName,
+            SortOrder = s.SortOrder,
+            IsActive  = s.IsActive,
+            Translations = s.Translations.ToDictionary(
+                t => t.Language.ToString(),
+                t => new ServiceTranslationDto
+                {
+                    Name        = t.Name,
+                    Description = t.Description,
+                    PriceInfo   = t.PriceInfo,
+                }),
+        };
+    }
+
     public async Task<Guid> CreateAsync(
         CreateServiceDto dto, CancellationToken ct = default)
     {
