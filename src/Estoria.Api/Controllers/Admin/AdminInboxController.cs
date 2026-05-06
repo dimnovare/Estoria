@@ -198,13 +198,14 @@ public class AdminInboxController : ControllerBase
     [HttpPost("messages/{messageId}/read")]
     public async Task<IActionResult> MarkRead(
         string messageId,
-        [FromBody] MarkReadRequest body,
+        [FromBody] MarkReadRequest? body,
         CancellationToken ct = default)
     {
-        await _mailbox.MarkReadAsync(messageId, body.IsRead, ct);
+        var isRead = body?.IsRead ?? true;   // default: mark AS read when no body
+        await _mailbox.MarkReadAsync(messageId, isRead, ct);
         // Keep the local link row in lock-step so the sidebar Unread count
         // updates immediately, without waiting for the next delta tick.
-        await _links.MirrorReadStatusAsync(messageId, body.IsRead, ct);
+        await _links.MirrorReadStatusAsync(messageId, isRead, ct);
         return NoContent();
     }
 
