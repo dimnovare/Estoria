@@ -248,11 +248,10 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
-app.UseSwagger();
-app.UseSwaggerUI();
-
 if (app.Environment.IsDevelopment())
 {
+    app.UseSwagger();
+    app.UseSwaggerUI();
     app.UseStaticFiles();
 }
 
@@ -291,7 +290,7 @@ _ = Task.Run(async () =>
     }
 });
 
-if (app.Environment.IsDevelopment())
+if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
