@@ -5,7 +5,7 @@ namespace Estoria.Application.DTOs.Properties;
 
 public class PropertyTranslationDto
 {
-    [Required, MaxLength(200)]
+    [MaxLength(200)]
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;

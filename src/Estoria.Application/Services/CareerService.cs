@@ -57,11 +57,12 @@ public class CareerService
     // -------------------------------------------------------------------------
 
     public async Task<List<CareerListDto>> GetAllAdminAsync(
-        Language lang, CancellationToken ct = default)
+        Language lang, bool includeArchived = false, CancellationToken ct = default)
     {
         var postings = await _db.CareerPostings
             .AsNoTracking()
             .Include(cp => cp.Translations)
+            .Where(cp => includeArchived || cp.IsActive)
             .OrderByDescending(cp => cp.CreatedAt)
             .ToListAsync(ct);
 
@@ -71,9 +72,12 @@ public class CareerService
     public async Task<Guid> CreateAsync(
         CreateCareerDto dto, CancellationToken ct = default)
     {
-        var enTitle = dto.Translations.TryGetValue(Language.En, out var enTrans)
+        var enTitle = (dto.Translations.TryGetValue(Language.En, out var enTrans) && !string.IsNullOrWhiteSpace(enTrans.Title))
             ? enTrans.Title
-            : dto.Translations.Values.First().Title;
+            : dto.Translations.Values.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.Title))?.Title ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(enTitle))
+            throw new ArgumentException("At least one language must have a title.");
 
         var baseSlug = SlugHelper.GenerateSlug(enTitle);
         var slug = await SlugHelper.UniqueAsync(baseSlug,
@@ -85,6 +89,8 @@ public class CareerService
         };
 
         foreach (var (lang, trans) in dto.Translations)
+        {
+            if (string.IsNullOrWhiteSpace(trans.Title)) continue;
             posting.Translations.Add(new CareerPostingTranslation
             {
                 CareerPostingId = posting.Id,
@@ -93,6 +99,7 @@ public class CareerService
                 Description = trans.Description,
                 Location = trans.Location
             });
+        }
 
         _db.CareerPostings.Add(posting);
         await _db.SaveChangesAsync(ct);
@@ -115,11 +122,16 @@ public class CareerService
         posting.Slug = await SlugHelper.UniqueAsync(baseSlug,
             s => _db.CareerPostings.AnyAsync(x => x.Slug == s && x.Id != id, ct));
 
-        // RemoveRange marks entities Deleted once; Clear() would double-mark them
-        // causing a duplicate DELETE on SaveChanges (0 rows → concurrency exception).
-        _db.CareerPostingTranslations.RemoveRange(posting.Translations);
+        var dbCtx = (DbContext)_db;
+        foreach (var t in posting.Translations.ToList())
+            dbCtx.Entry(t).State = EntityState.Detached;
+        posting.Translations.Clear();
+
+        await _db.CareerPostingTranslations.Where(t => t.CareerPostingId == id).ExecuteDeleteAsync(ct);
 
         foreach (var (lang, trans) in dto.Translations)
+        {
+            if (string.IsNullOrWhiteSpace(trans.Title)) continue;
             posting.Translations.Add(new CareerPostingTranslation
             {
                 CareerPostingId = posting.Id,
@@ -128,6 +140,7 @@ public class CareerService
                 Description = trans.Description,
                 Location = trans.Location
             });
+        }
 
         await _db.SaveChangesAsync(ct);
     }

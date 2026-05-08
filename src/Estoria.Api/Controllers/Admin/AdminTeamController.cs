@@ -32,8 +32,10 @@ public class AdminTeamController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll(CancellationToken ct = default)
-        => Ok(await _svc.GetAllAdminAsync(Domain.Enums.Language.En, ct));
+    public async Task<IActionResult> GetAll(
+        [FromQuery] bool includeArchived = false,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetAllAdminAsync(Domain.Enums.Language.En, includeArchived, ct));
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)

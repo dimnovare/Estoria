@@ -105,9 +105,12 @@ public class BlogService
     public async Task<Guid> CreateAsync(
         CreateBlogPostDto dto, CancellationToken ct = default)
     {
-        var enTitle = dto.Translations.TryGetValue(Language.En, out var enTrans)
+        var enTitle = (dto.Translations.TryGetValue(Language.En, out var enTrans) && !string.IsNullOrWhiteSpace(enTrans.Title))
             ? enTrans.Title
-            : dto.Translations.Values.First().Title;
+            : dto.Translations.Values.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.Title))?.Title ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(enTitle))
+            throw new ArgumentException("At least one language must have a title.");
 
         var baseSlug = SlugHelper.GenerateSlug(enTitle);
         var slug = await SlugHelper.UniqueAsync(baseSlug,
@@ -121,6 +124,8 @@ public class BlogService
         };
 
         foreach (var (lang, trans) in dto.Translations)
+        {
+            if (string.IsNullOrWhiteSpace(trans.Title)) continue;
             post.Translations.Add(new BlogPostTranslation
             {
                 BlogPostId = post.Id,
@@ -131,6 +136,7 @@ public class BlogService
                 MetaTitle = trans.MetaTitle,
                 MetaDescription = trans.MetaDescription
             });
+        }
 
         _db.BlogPosts.Add(post);
         await _db.SaveChangesAsync(ct);
@@ -163,11 +169,16 @@ public class BlogService
         post.AuthorId = dto.AuthorId;
         post.CoverImageUrl = dto.CoverImageUrl;
 
-        // RemoveRange marks entities Deleted once; Clear() would double-mark them
-        // causing a duplicate DELETE on SaveChanges (0 rows → concurrency exception).
-        _db.BlogPostTranslations.RemoveRange(post.Translations);
+        var dbCtx = (DbContext)_db;
+        foreach (var t in post.Translations.ToList())
+            dbCtx.Entry(t).State = EntityState.Detached;
+        post.Translations.Clear();
+
+        await _db.BlogPostTranslations.Where(t => t.BlogPostId == id).ExecuteDeleteAsync(ct);
 
         foreach (var (lang, trans) in dto.Translations)
+        {
+            if (string.IsNullOrWhiteSpace(trans.Title)) continue;
             post.Translations.Add(new BlogPostTranslation
             {
                 BlogPostId = post.Id,
@@ -178,6 +189,7 @@ public class BlogService
                 MetaTitle = trans.MetaTitle,
                 MetaDescription = trans.MetaDescription
             });
+        }
 
         await _db.SaveChangesAsync(ct);
 

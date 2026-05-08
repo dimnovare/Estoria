@@ -35,11 +35,12 @@ public class OfferedServiceService
     // -------------------------------------------------------------------------
 
     public async Task<List<ServiceListDto>> GetAllAdminAsync(
-        Language lang, CancellationToken ct = default)
+        Language lang, bool includeArchived = false, CancellationToken ct = default)
     {
         var services = await _db.Services
             .AsNoTracking()
             .Include(s => s.Translations)
+            .Where(s => includeArchived || s.IsActive)
             .OrderBy(s => s.SortOrder)
             .ToListAsync(ct);
 
@@ -81,9 +82,12 @@ public class OfferedServiceService
     public async Task<Guid> CreateAsync(
         CreateServiceDto dto, CancellationToken ct = default)
     {
-        var enName = dto.Translations.TryGetValue(Language.En, out var enTrans)
+        var enName = (dto.Translations.TryGetValue(Language.En, out var enTrans) && !string.IsNullOrWhiteSpace(enTrans.Name))
             ? enTrans.Name
-            : dto.Translations.Values.First().Name;
+            : dto.Translations.Values.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.Name))?.Name ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(enName))
+            throw new ArgumentException("At least one language must have a name.");
 
         var baseSlug = SlugHelper.GenerateSlug(enName);
         var slug = await SlugHelper.UniqueAsync(baseSlug,
@@ -97,6 +101,8 @@ public class OfferedServiceService
         };
 
         foreach (var (lang, trans) in dto.Translations)
+        {
+            if (string.IsNullOrWhiteSpace(trans.Name)) continue;
             service.Translations.Add(new ServiceTranslation
             {
                 ServiceId = service.Id,
@@ -105,6 +111,7 @@ public class OfferedServiceService
                 Description = trans.Description,
                 PriceInfo = trans.PriceInfo
             });
+        }
 
         _db.Services.Add(service);
         await _db.SaveChangesAsync(ct);
@@ -129,11 +136,16 @@ public class OfferedServiceService
         service.IconName = dto.IconName;
         service.SortOrder = dto.SortOrder;
 
-        // RemoveRange marks entities Deleted once; Clear() would double-mark them
-        // causing a duplicate DELETE on SaveChanges (0 rows → concurrency exception).
-        _db.ServiceTranslations.RemoveRange(service.Translations);
+        var dbCtx = (DbContext)_db;
+        foreach (var t in service.Translations.ToList())
+            dbCtx.Entry(t).State = EntityState.Detached;
+        service.Translations.Clear();
+
+        await _db.ServiceTranslations.Where(t => t.ServiceId == id).ExecuteDeleteAsync(ct);
 
         foreach (var (lang, trans) in dto.Translations)
+        {
+            if (string.IsNullOrWhiteSpace(trans.Name)) continue;
             service.Translations.Add(new ServiceTranslation
             {
                 ServiceId = service.Id,
@@ -142,6 +154,7 @@ public class OfferedServiceService
                 Description = trans.Description,
                 PriceInfo = trans.PriceInfo
             });
+        }
 
         await _db.SaveChangesAsync(ct);
     }

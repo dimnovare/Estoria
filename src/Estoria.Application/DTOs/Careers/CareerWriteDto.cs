@@ -5,7 +5,7 @@ namespace Estoria.Application.DTOs.Careers;
 
 public class CareerTranslationDto
 {
-    [Required, MaxLength(200)]
+    [MaxLength(200)]
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string? Location { get; set; }

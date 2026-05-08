@@ -56,11 +56,12 @@ public class TeamService
     // -------------------------------------------------------------------------
 
     public async Task<List<TeamMemberListDto>> GetAllAdminAsync(
-        Language lang, CancellationToken ct = default)
+        Language lang, bool includeArchived = false, CancellationToken ct = default)
     {
         var members = await _db.TeamMembers
             .AsNoTracking()
             .Include(m => m.Translations)
+            .Where(m => includeArchived || m.IsActive)
             .OrderBy(m => m.SortOrder)
             .ToListAsync(ct);
 
@@ -105,9 +106,12 @@ public class TeamService
     public async Task<Guid> CreateAsync(
         CreateTeamMemberDto dto, CancellationToken ct = default)
     {
-        var enName = dto.Translations.TryGetValue(Language.En, out var enTrans)
+        var enName = (dto.Translations.TryGetValue(Language.En, out var enTrans) && !string.IsNullOrWhiteSpace(enTrans.Name))
             ? enTrans.Name
-            : dto.Translations.Values.First().Name;
+            : dto.Translations.Values.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.Name))?.Name ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(enName))
+            throw new ArgumentException("At least one language must have a name.");
 
         var baseSlug = SlugHelper.GenerateSlug(enName);
         var slug = await SlugHelper.UniqueAsync(baseSlug,
@@ -124,6 +128,8 @@ public class TeamService
         };
 
         foreach (var (lang, trans) in dto.Translations)
+        {
+            if (string.IsNullOrWhiteSpace(trans.Name)) continue;
             member.Translations.Add(new TeamMemberTranslation
             {
                 TeamMemberId = member.Id,
@@ -132,6 +138,7 @@ public class TeamService
                 Role = trans.Role,
                 Bio = trans.Bio
             });
+        }
 
         _db.TeamMembers.Add(member);
         await _db.SaveChangesAsync(ct);
@@ -167,11 +174,16 @@ public class TeamService
         member.Languages = dto.Languages;
         member.SortOrder = dto.SortOrder;
 
-        // RemoveRange marks entities Deleted once; Clear() would double-mark them
-        // causing a duplicate DELETE on SaveChanges (0 rows → concurrency exception).
-        _db.TeamMemberTranslations.RemoveRange(member.Translations);
+        var dbCtx = (DbContext)_db;
+        foreach (var t in member.Translations.ToList())
+            dbCtx.Entry(t).State = EntityState.Detached;
+        member.Translations.Clear();
+
+        await _db.TeamMemberTranslations.Where(t => t.TeamMemberId == id).ExecuteDeleteAsync(ct);
 
         foreach (var (lang, trans) in dto.Translations)
+        {
+            if (string.IsNullOrWhiteSpace(trans.Name)) continue;
             member.Translations.Add(new TeamMemberTranslation
             {
                 TeamMemberId = member.Id,
@@ -180,6 +192,7 @@ public class TeamService
                 Role = trans.Role,
                 Bio = trans.Bio
             });
+        }
 
         await _db.SaveChangesAsync(ct);
 

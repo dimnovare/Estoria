@@ -28,7 +28,7 @@ public static class DependencyInjection
         if (webRootPath is not null)
         {
             services.AddSingleton<IFileStorageService>(
-                new LocalFileStorageService(webRootPath));
+                new LocalFileStorageService(webRootPath, config));
         }
         else
         {

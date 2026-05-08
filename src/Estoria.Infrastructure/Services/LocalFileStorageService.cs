@@ -1,4 +1,5 @@
 using Estoria.Application.Interfaces;
+using Microsoft.Extensions.Configuration;
 
 namespace Estoria.Infrastructure.Services;
 
@@ -7,15 +8,28 @@ public class LocalFileStorageService : IFileStorageService
     private const string PrivateRoot = "_private";
 
     private readonly string _wwwRootPath;
+    private readonly string? _publicBaseUrl;
 
-    public LocalFileStorageService(string wwwRootPath) => _wwwRootPath = wwwRootPath;
+    public LocalFileStorageService(string wwwRootPath, IConfiguration? config = null)
+    {
+        _wwwRootPath   = wwwRootPath;
+        _publicBaseUrl = config?["Storage:PublicBaseUrl"]?.TrimEnd('/');
+    }
+
+    // Prepend the configured base URL so the browser running on a different
+    // port in dev (Vite:8081) can load files served by the API (5247).
+    private string ToPublicUrl(string relPath)
+    {
+        if (string.IsNullOrEmpty(_publicBaseUrl)) return relPath;
+        return $"{_publicBaseUrl}{relPath}";
+    }
 
     public async Task<string> UploadPublicAsync(
         Stream stream, string fileName, string contentType, string folder, CancellationToken ct = default)
     {
         var (relPath, fullPath) = BuildPaths($"uploads/{folder}", fileName);
         await WriteAsync(stream, fullPath, ct);
-        return relPath;
+        return ToPublicUrl(relPath);
     }
 
     public async Task<string> UploadPrivateAsync(
@@ -46,7 +60,7 @@ public class LocalFileStorageService : IFileStorageService
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         await WriteAsync(stream, fullPath, ct);
 
-        return relPath;
+        return ToPublicUrl(relPath);
     }
 
     public Task<Stream> GetPrivateStreamAsync(string key, CancellationToken ct = default)

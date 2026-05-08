@@ -215,7 +215,7 @@ public class PropertyService
     // -------------------------------------------------------------------------
 
     public async Task<PagedResult<AdminPropertyDetailDto>> GetAllAdminAsync(
-        int page, int pageSize, CancellationToken ct = default)
+        int page, int pageSize, bool includeArchived = false, CancellationToken ct = default)
     {
         var query = _db.Properties
             .AsNoTracking()
@@ -223,6 +223,7 @@ public class PropertyService
             .Include(p => p.Images)
             .Include(p => p.Features)
             .Include(p => p.Agent).ThenInclude(a => a.Translations)
+            .Where(p => includeArchived || p.Status != PropertyStatus.Archived)
             .OrderByDescending(p => p.CreatedAt);
 
         var totalCount = await query.CountAsync(ct);
@@ -239,6 +240,22 @@ public class PropertyService
             Page = page,
             PageSize = pageSize
         };
+    }
+
+    public async Task SetStatusAsync(
+        Guid id, PropertyStatus status, CancellationToken ct = default)
+    {
+        var property = await _db.Properties.FindAsync([id], ct)
+            ?? throw new KeyNotFoundException($"Property {id} not found.");
+
+        var prev = property.Status;
+        property.Status = status;
+        await _db.SaveChangesAsync(ct);
+
+        await LogPropertyEventAsync(id, PropertyEventType.StatusChanged,
+            new { status = prev.ToString() },
+            new { status = status.ToString() },
+            _currentUser.UserId, ct);
     }
 
     public async Task<AdminPropertyDetailDto?> GetByIdAdminAsync(
@@ -258,9 +275,12 @@ public class PropertyService
     public async Task<Guid> CreateAsync(
         CreatePropertyDto dto, CancellationToken ct = default)
     {
-        var enTitle = dto.Translations.TryGetValue(Language.En, out var enTrans)
+        var enTitle = (dto.Translations.TryGetValue(Language.En, out var enTrans) && !string.IsNullOrWhiteSpace(enTrans.Title))
             ? enTrans.Title
-            : dto.Translations.Values.First().Title;
+            : dto.Translations.Values.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.Title))?.Title ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(enTitle))
+            throw new ArgumentException("At least one language must have a title.");
 
         var baseSlug = SlugHelper.GenerateSlug(enTitle);
         var slug = await SlugHelper.UniqueAsync(baseSlug,
@@ -288,18 +308,21 @@ public class PropertyService
         };
 
         foreach (var (lang, trans) in dto.Translations)
+        {
+            if (string.IsNullOrWhiteSpace(trans.Title)) continue;
             property.Translations.Add(new PropertyTranslation
             {
                 PropertyId = property.Id,
                 Language = lang,
                 Title = trans.Title,
-                Description = trans.Description,
-                Address = trans.Address,
-                City = trans.City,
-                District = trans.District
+                Description = trans.Description ?? string.Empty,
+                Address = trans.Address ?? string.Empty,
+                City = trans.City ?? string.Empty,
+                District = trans.District,
             });
+        }
 
-        foreach (var feature in dto.Features)
+        foreach (var feature in dto.Features.Where(f => !string.IsNullOrWhiteSpace(f)))
             property.Features.Add(new PropertyFeature
             {
                 PropertyId = property.Id,
@@ -378,25 +401,37 @@ public class PropertyService
         property.IsFeatured = dto.IsFeatured;
         property.AgentId = dto.AgentId;
 
-        // RemoveRange marks the tracked entities as Deleted once. Clear() would mark
-        // them Deleted a second time, causing EF to emit a duplicate DELETE that
-        // returns 0 rows and throws DbUpdateConcurrencyException. Omit Clear().
-        _db.PropertyTranslations.RemoveRange(property.Translations);
-        _db.PropertyFeatures.RemoveRange(property.Features);
+        // Detach tracked children so EF won't generate DELETEs for them via
+        // the change tracker — we delete them directly below using SQL.
+        var dbCtx = (DbContext)_db;
+        foreach (var t in property.Translations.ToList())
+            dbCtx.Entry(t).State = EntityState.Detached;
+        foreach (var f in property.Features.ToList())
+            dbCtx.Entry(f).State = EntityState.Detached;
+        property.Translations.Clear();
+        property.Features.Clear();
+
+        // Delete old rows directly, bypassing the change tracker so the
+        // (PropertyId, Language) unique index never sees old+new simultaneously.
+        await _db.PropertyTranslations.Where(t => t.PropertyId == id).ExecuteDeleteAsync(ct);
+        await _db.PropertyFeatures.Where(f => f.PropertyId == id).ExecuteDeleteAsync(ct);
 
         foreach (var (lang, trans) in dto.Translations)
+        {
+            if (string.IsNullOrWhiteSpace(trans.Title)) continue;
             property.Translations.Add(new PropertyTranslation
             {
                 PropertyId = property.Id,
                 Language = lang,
                 Title = trans.Title,
-                Description = trans.Description,
-                Address = trans.Address,
-                City = trans.City,
-                District = trans.District
+                Description = trans.Description ?? string.Empty,
+                Address = trans.Address ?? string.Empty,
+                City = trans.City ?? string.Empty,
+                District = trans.District,
             });
+        }
 
-        foreach (var feature in dto.Features)
+        foreach (var feature in dto.Features.Where(f => !string.IsNullOrWhiteSpace(f)))
             property.Features.Add(new PropertyFeature
             {
                 PropertyId = property.Id,

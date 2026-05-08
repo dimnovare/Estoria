@@ -48,8 +48,9 @@ public class AdminPropertiesController : ControllerBase
     public async Task<IActionResult> GetAll(
         int page = 1,
         int pageSize = 20,
+        [FromQuery] bool includeArchived = false,
         CancellationToken ct = default)
-        => Ok(await _svc.GetAllAdminAsync(page, pageSize, ct));
+        => Ok(await _svc.GetAllAdminAsync(page, pageSize, includeArchived, ct));
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
@@ -74,6 +75,16 @@ public class AdminPropertiesController : ControllerBase
         CancellationToken ct = default)
     {
         await _svc.UpdateAsync(id, dto, ct);
+        return NoContent();
+    }
+
+    [HttpPatch("{id:guid}/status")]
+    public async Task<IActionResult> SetStatus(
+        Guid id,
+        [FromBody] SetPropertyStatusBody body,
+        CancellationToken ct = default)
+    {
+        await _svc.SetStatusAsync(id, body.Status, ct);
         return NoContent();
     }
 
@@ -319,3 +330,5 @@ public class AdminPropertiesController : ControllerBase
         return NoContent();
     }
 }
+
+public record SetPropertyStatusBody(PropertyStatus Status);
