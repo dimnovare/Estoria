@@ -167,8 +167,9 @@ public class TeamService
         member.Languages = dto.Languages;
         member.SortOrder = dto.SortOrder;
 
+        // RemoveRange marks entities Deleted once; Clear() would double-mark them
+        // causing a duplicate DELETE on SaveChanges (0 rows → concurrency exception).
         _db.TeamMemberTranslations.RemoveRange(member.Translations);
-        member.Translations.Clear();
 
         foreach (var (lang, trans) in dto.Translations)
             member.Translations.Add(new TeamMemberTranslation

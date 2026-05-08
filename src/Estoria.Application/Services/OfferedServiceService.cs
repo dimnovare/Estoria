@@ -129,8 +129,9 @@ public class OfferedServiceService
         service.IconName = dto.IconName;
         service.SortOrder = dto.SortOrder;
 
+        // RemoveRange marks entities Deleted once; Clear() would double-mark them
+        // causing a duplicate DELETE on SaveChanges (0 rows → concurrency exception).
         _db.ServiceTranslations.RemoveRange(service.Translations);
-        service.Translations.Clear();
 
         foreach (var (lang, trans) in dto.Translations)
             service.Translations.Add(new ServiceTranslation

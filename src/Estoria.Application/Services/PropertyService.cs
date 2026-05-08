@@ -378,10 +378,11 @@ public class PropertyService
         property.IsFeatured = dto.IsFeatured;
         property.AgentId = dto.AgentId;
 
+        // RemoveRange marks the tracked entities as Deleted once. Clear() would mark
+        // them Deleted a second time, causing EF to emit a duplicate DELETE that
+        // returns 0 rows and throws DbUpdateConcurrencyException. Omit Clear().
         _db.PropertyTranslations.RemoveRange(property.Translations);
         _db.PropertyFeatures.RemoveRange(property.Features);
-        property.Translations.Clear();
-        property.Features.Clear();
 
         foreach (var (lang, trans) in dto.Translations)
             property.Translations.Add(new PropertyTranslation

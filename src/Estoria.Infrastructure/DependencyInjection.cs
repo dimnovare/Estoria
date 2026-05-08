@@ -56,10 +56,18 @@ public static class DependencyInjection
         services.AddScoped<IImageProcessingService, MagickImageProcessingService>();
         services.AddScoped<IImageProcessingJob, ImageProcessingJob>();
 
-        // Microsoft Graph / shared mailbox client. Singleton: GraphServiceClient
-        // is thread-safe and the underlying ClientSecretCredential caches tokens
-        // — re-creating per scope would defeat that cache.
-        services.AddSingleton<IMailboxService, GraphMailService>();
+        // Graph is optional in dev. If TenantId is empty/whitespace, register a
+        // NoOp service so the inbox controller can still activate and return
+        // empty pages cleanly. Production sets all four Graph:* values via Railway env.
+        var graphTenantId = config["Graph:TenantId"];
+        if (!string.IsNullOrWhiteSpace(graphTenantId))
+        {
+            services.AddSingleton<IMailboxService, GraphMailService>();
+        }
+        else
+        {
+            services.AddSingleton<IMailboxService, NoOpMailboxService>();
+        }
 
         // Nominatim geocoder. Typed HttpClient with the UA Nominatim's policy
         // requires; the geocoder itself enforces the 1 req/s rate limit.

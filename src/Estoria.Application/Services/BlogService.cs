@@ -163,8 +163,9 @@ public class BlogService
         post.AuthorId = dto.AuthorId;
         post.CoverImageUrl = dto.CoverImageUrl;
 
+        // RemoveRange marks entities Deleted once; Clear() would double-mark them
+        // causing a duplicate DELETE on SaveChanges (0 rows → concurrency exception).
         _db.BlogPostTranslations.RemoveRange(post.Translations);
-        post.Translations.Clear();
 
         foreach (var (lang, trans) in dto.Translations)
             post.Translations.Add(new BlogPostTranslation

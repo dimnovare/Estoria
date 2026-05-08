@@ -115,8 +115,9 @@ public class CareerService
         posting.Slug = await SlugHelper.UniqueAsync(baseSlug,
             s => _db.CareerPostings.AnyAsync(x => x.Slug == s && x.Id != id, ct));
 
+        // RemoveRange marks entities Deleted once; Clear() would double-mark them
+        // causing a duplicate DELETE on SaveChanges (0 rows → concurrency exception).
         _db.CareerPostingTranslations.RemoveRange(posting.Translations);
-        posting.Translations.Clear();
 
         foreach (var (lang, trans) in dto.Translations)
             posting.Translations.Add(new CareerPostingTranslation

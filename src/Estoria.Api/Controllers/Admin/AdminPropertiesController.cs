@@ -7,6 +7,7 @@ using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Hosting;
 
 namespace Estoria.Api.Controllers.Admin;
 
@@ -25,19 +26,22 @@ public class AdminPropertiesController : ControllerBase
     private readonly IFileStorageService _storage;
     private readonly ICurrentUserService _currentUser;
     private readonly IBackgroundJobClient _jobs;
+    private readonly IWebHostEnvironment _env;
 
     public AdminPropertiesController(
         PropertyService svc,
         IAppDbContext db,
         IFileStorageService storage,
         ICurrentUserService currentUser,
-        IBackgroundJobClient jobs)
+        IBackgroundJobClient jobs,
+        IWebHostEnvironment env)
     {
         _svc         = svc;
         _db          = db;
         _storage     = storage;
         _currentUser = currentUser;
         _jobs        = jobs;
+        _env         = env;
     }
 
     [HttpGet]
@@ -178,14 +182,31 @@ public class AdminPropertiesController : ControllerBase
                 folder: $"properties/originals/{id}",
                 ct);
 
+            // Dev: also write the original to the public folder so the admin UI
+            // can render the image immediately without waiting for Hangfire.
+            string uploadedPublicUrl = string.Empty;
+            if (_env.IsDevelopment())
+            {
+                await using var pubStream = file.OpenReadStream();
+                uploadedPublicUrl = await _storage.UploadPublicAsync(
+                    pubStream, file.FileName, file.ContentType,
+                    folder: $"properties/images/{id}",
+                    ct);
+            }
+
             var image = new PropertyImage
             {
                 PropertyId       = id,
                 OriginalKey      = originalKey,
-                Url              = string.Empty,    // populated when processing finishes
+                Url              = uploadedPublicUrl,
+                ThumbUrl         = _env.IsDevelopment() ? uploadedPublicUrl : null,
+                MediumUrl        = _env.IsDevelopment() ? uploadedPublicUrl : null,
+                LargeUrl         = _env.IsDevelopment() ? uploadedPublicUrl : null,
                 SortOrder        = nextSort++,
                 IsCover          = property.Images.Count == 0 && nextSort == 1,
-                ProcessingStatus = ImageProcessingStatus.Pending,
+                ProcessingStatus = _env.IsDevelopment()
+                    ? ImageProcessingStatus.Done
+                    : ImageProcessingStatus.Pending,
             };
 
             _db.PropertyImages.Add(image);
@@ -194,12 +215,14 @@ public class AdminPropertiesController : ControllerBase
 
         await _db.SaveChangesAsync(ct);
 
-        // Enqueue per-row processing. The job is idempotent and survives
-        // reprocessing — a failed run flips the row to Failed without
-        // throwing back into Hangfire's retry loop.
-        foreach (var image in uploaded)
+        // Enqueue per-row processing only in prod. In dev, images are written
+        // directly to the public folder above — no watermarking pipeline needed.
+        if (!_env.IsDevelopment())
         {
-            _jobs.Enqueue<IImageProcessingJob>(j => j.ProcessAsync(image.Id));
+            foreach (var image in uploaded)
+            {
+                _jobs.Enqueue<IImageProcessingJob>(j => j.ProcessAsync(image.Id));
+            }
         }
 
         // Emit a history row per uploaded image. LogPropertyEventAsync swallows
@@ -215,19 +238,18 @@ public class AdminPropertiesController : ControllerBase
                 ct: ct);
         }
 
-        // Return enough for the admin UI to render Pending placeholders. The
-        // variant URLs come back null until the Hangfire run completes; the
-        // frontend polls the property record to flip the state.
+        // Return URLs populated in dev (image is immediately renderable) or null in
+        // prod (frontend polls until the Hangfire job flips ProcessingStatus to Done).
         var payload = uploaded.Select(image => new
         {
             image.Id,
             image.SortOrder,
             image.IsCover,
             image.ProcessingStatus,
-            ThumbUrl  = (string?)null,
-            MediumUrl = (string?)null,
-            LargeUrl  = (string?)null,
-            Url       = (string?)null,
+            ThumbUrl  = image.ThumbUrl,
+            MediumUrl = image.MediumUrl,
+            LargeUrl  = image.LargeUrl,
+            Url       = string.IsNullOrEmpty(image.Url) ? (string?)null : image.Url,
         });
 
         return Ok(payload);
