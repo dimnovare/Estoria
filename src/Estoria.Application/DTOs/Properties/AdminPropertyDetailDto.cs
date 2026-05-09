@@ -25,6 +25,7 @@ public class AdminPropertyDetailDto
     public PropertyStatus Status { get; set; }
     public DateTime? PublishedAt { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? CoverImageUrl { get; set; }
     public TeamMemberListDto Agent { get; set; } = null!;
     public Dictionary<Language, PropertyTranslationDto> Translations { get; set; } = [];
     public List<PropertyImageDto> Images { get; set; } = [];

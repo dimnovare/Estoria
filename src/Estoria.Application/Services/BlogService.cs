@@ -154,40 +154,42 @@ public class BlogService
     public async Task UpdateAsync(
         Guid id, UpdateBlogPostDto dto, CancellationToken ct = default)
     {
-        var post = await _db.BlogPosts
-            .Include(b => b.Translations)
+        var post = await _db.BlogPosts                   // NO .Include
             .FirstOrDefaultAsync(b => b.Id == id, ct)
             ?? throw new KeyNotFoundException($"BlogPost {id} not found.");
 
         var enTitle = dto.Translations.TryGetValue(Language.En, out var enTrans)
-            ? enTrans.Title
-            : dto.Translations.Values.First().Title;
+            && !string.IsNullOrWhiteSpace(enTrans.Title)
+                ? enTrans.Title
+                : dto.Translations.Values.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.Title))?.Title
+                  ?? throw new ArgumentException("At least one language must have a title.");
 
-        var baseSlug = SlugHelper.GenerateSlug(enTitle);
-        post.Slug = await SlugHelper.UniqueAsync(baseSlug,
+        post.Slug          = await SlugHelper.UniqueAsync(
+            SlugHelper.GenerateSlug(enTitle),
             s => _db.BlogPosts.AnyAsync(b => b.Slug == s && b.Id != id, ct));
-        post.AuthorId = dto.AuthorId;
+        post.AuthorId      = dto.AuthorId;
         post.CoverImageUrl = dto.CoverImageUrl;
 
-        var dbCtx = (DbContext)_db;
-        foreach (var t in post.Translations.ToList())
-            dbCtx.Entry(t).State = EntityState.Detached;
-        post.Translations.Clear();
+        // ── Save 1: parent scalar fields only ────────────────────────────────────
+        await _db.SaveChangesAsync(ct);
 
-        await _db.BlogPostTranslations.Where(t => t.BlogPostId == id).ExecuteDeleteAsync(ct);
+        // ── Save 2: replace translations atomically ──────────────────────────────
+        await _db.BlogPostTranslations
+            .Where(t => t.BlogPostId == id)
+            .ExecuteDeleteAsync(ct);
 
         foreach (var (lang, trans) in dto.Translations)
         {
             if (string.IsNullOrWhiteSpace(trans.Title)) continue;
-            post.Translations.Add(new BlogPostTranslation
+            _db.BlogPostTranslations.Add(new BlogPostTranslation
             {
-                BlogPostId = post.Id,
-                Language = lang,
-                Title = trans.Title,
-                Excerpt = trans.Excerpt,
-                Content = trans.Content,
-                MetaTitle = trans.MetaTitle,
-                MetaDescription = trans.MetaDescription
+                BlogPostId      = id,
+                Language        = lang,
+                Title           = trans.Title,
+                Excerpt         = trans.Excerpt,
+                Content         = trans.Content         ?? string.Empty,
+                MetaTitle       = trans.MetaTitle,
+                MetaDescription = trans.MetaDescription,
             });
         }
 
@@ -196,8 +198,8 @@ public class BlogService
         await _audit.LogAsync(
             "Blog.Update",
             entityType: nameof(BlogPost),
-            entityId: post.Id,
-            details: new { post.Slug, post.AuthorId },
+            entityId:   post.Id,
+            details:    new { post.Slug, post.AuthorId },
             ct: ct);
     }
 

@@ -109,36 +109,38 @@ public class CareerService
     public async Task UpdateAsync(
         Guid id, UpdateCareerDto dto, CancellationToken ct = default)
     {
-        var posting = await _db.CareerPostings
-            .Include(cp => cp.Translations)
+        var posting = await _db.CareerPostings           // NO .Include
             .FirstOrDefaultAsync(cp => cp.Id == id, ct)
             ?? throw new KeyNotFoundException($"CareerPosting {id} not found.");
 
         var enTitle = dto.Translations.TryGetValue(Language.En, out var enTrans)
-            ? enTrans.Title
-            : dto.Translations.Values.First().Title;
+            && !string.IsNullOrWhiteSpace(enTrans.Title)
+                ? enTrans.Title
+                : dto.Translations.Values.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.Title))?.Title
+                  ?? throw new ArgumentException("At least one language must have a title.");
 
-        var baseSlug = SlugHelper.GenerateSlug(enTitle);
-        posting.Slug = await SlugHelper.UniqueAsync(baseSlug,
+        posting.Slug = await SlugHelper.UniqueAsync(
+            SlugHelper.GenerateSlug(enTitle),
             s => _db.CareerPostings.AnyAsync(x => x.Slug == s && x.Id != id, ct));
 
-        var dbCtx = (DbContext)_db;
-        foreach (var t in posting.Translations.ToList())
-            dbCtx.Entry(t).State = EntityState.Detached;
-        posting.Translations.Clear();
+        // ── Save 1: parent scalar fields only ────────────────────────────────────
+        await _db.SaveChangesAsync(ct);
 
-        await _db.CareerPostingTranslations.Where(t => t.CareerPostingId == id).ExecuteDeleteAsync(ct);
+        // ── Save 2: replace translations atomically ──────────────────────────────
+        await _db.CareerPostingTranslations
+            .Where(t => t.CareerPostingId == id)
+            .ExecuteDeleteAsync(ct);
 
         foreach (var (lang, trans) in dto.Translations)
         {
             if (string.IsNullOrWhiteSpace(trans.Title)) continue;
-            posting.Translations.Add(new CareerPostingTranslation
+            _db.CareerPostingTranslations.Add(new CareerPostingTranslation
             {
-                CareerPostingId = posting.Id,
-                Language = lang,
-                Title = trans.Title,
-                Description = trans.Description,
-                Location = trans.Location
+                CareerPostingId = id,
+                Language        = lang,
+                Title           = trans.Title,
+                Description     = trans.Description,
+                Location        = trans.Location,
             });
         }
 

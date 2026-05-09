@@ -156,41 +156,43 @@ public class TeamService
     public async Task UpdateAsync(
         Guid id, UpdateTeamMemberDto dto, CancellationToken ct = default)
     {
-        var member = await _db.TeamMembers
-            .Include(m => m.Translations)
+        var member = await _db.TeamMembers               // NO .Include — avoids cascade trap
             .FirstOrDefaultAsync(m => m.Id == id, ct)
             ?? throw new KeyNotFoundException($"TeamMember {id} not found.");
 
         var enName = dto.Translations.TryGetValue(Language.En, out var enTrans)
-            ? enTrans.Name
-            : dto.Translations.Values.First().Name;
+            && !string.IsNullOrWhiteSpace(enTrans.Name)
+                ? enTrans.Name
+                : dto.Translations.Values.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.Name))?.Name
+                  ?? throw new ArgumentException("At least one language must have a name.");
 
-        var baseSlug = SlugHelper.GenerateSlug(enName);
-        member.Slug = await SlugHelper.UniqueAsync(baseSlug,
+        member.Slug      = await SlugHelper.UniqueAsync(
+            SlugHelper.GenerateSlug(enName),
             s => _db.TeamMembers.AnyAsync(m => m.Slug == s && m.Id != id, ct));
-        member.PhotoUrl = dto.PhotoUrl;
-        member.Phone = dto.Phone;
-        member.Email = dto.Email;
+        member.PhotoUrl  = dto.PhotoUrl;
+        member.Phone     = dto.Phone;
+        member.Email     = dto.Email;
         member.Languages = dto.Languages;
         member.SortOrder = dto.SortOrder;
 
-        var dbCtx = (DbContext)_db;
-        foreach (var t in member.Translations.ToList())
-            dbCtx.Entry(t).State = EntityState.Detached;
-        member.Translations.Clear();
+        // ── Save 1: parent scalar fields only (no navigation) ────────────────────
+        await _db.SaveChangesAsync(ct);
 
-        await _db.TeamMemberTranslations.Where(t => t.TeamMemberId == id).ExecuteDeleteAsync(ct);
+        // ── Save 2: replace translations atomically ──────────────────────────────
+        await _db.TeamMemberTranslations
+            .Where(t => t.TeamMemberId == id)
+            .ExecuteDeleteAsync(ct);
 
         foreach (var (lang, trans) in dto.Translations)
         {
             if (string.IsNullOrWhiteSpace(trans.Name)) continue;
-            member.Translations.Add(new TeamMemberTranslation
+            _db.TeamMemberTranslations.Add(new TeamMemberTranslation
             {
-                TeamMemberId = member.Id,
-                Language = lang,
-                Name = trans.Name,
-                Role = trans.Role,
-                Bio = trans.Bio
+                TeamMemberId = id,
+                Language     = lang,
+                Name         = trans.Name,
+                Role         = trans.Role,
+                Bio          = trans.Bio,
             });
         }
 
@@ -199,8 +201,8 @@ public class TeamService
         await _audit.LogAsync(
             "Team.Update",
             entityType: nameof(TeamMember),
-            entityId: member.Id,
-            details: new { member.Slug, member.Email },
+            entityId:   member.Id,
+            details:    new { member.Slug, member.Email },
             ct: ct);
     }
 

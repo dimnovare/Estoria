@@ -363,88 +363,73 @@ public class PropertyService
     public async Task UpdateAsync(
         Guid id, UpdatePropertyDto dto, CancellationToken ct = default)
     {
-        var property = await _db.Properties
-            .Include(p => p.Translations)
-            .Include(p => p.Features)
+        var property = await _db.Properties               // NO .Include
             .FirstOrDefaultAsync(p => p.Id == id, ct)
             ?? throw new KeyNotFoundException($"Property {id} not found.");
 
-        // Capture before-state once so we can diff after persist and emit
-        // the right PropertyEvent rows. Storing scalars only — Translations
-        // / Features churn isn't part of the public history widget.
         var prevPrice      = property.Price;
         var prevAgentId    = property.AgentId;
         var prevIsFeatured = property.IsFeatured;
         var prevCurrency   = property.Currency;
 
         var enTitle = dto.Translations.TryGetValue(Language.En, out var enTrans)
-            ? enTrans.Title
-            : dto.Translations.Values.First().Title;
+            && !string.IsNullOrWhiteSpace(enTrans.Title)
+                ? enTrans.Title
+                : dto.Translations.Values.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.Title))?.Title
+                  ?? throw new ArgumentException("At least one language must have a title.");
 
-        var baseSlug = SlugHelper.GenerateSlug(enTitle);
-        property.Slug = await SlugHelper.UniqueAsync(baseSlug,
+        property.Slug            = await SlugHelper.UniqueAsync(
+            SlugHelper.GenerateSlug(enTitle),
             s => _db.Properties.AnyAsync(p => p.Slug == s && p.Id != id, ct));
         property.TransactionType = dto.TransactionType;
-        property.PropertyType = dto.PropertyType;
-        property.Price = dto.Price;
-        property.Currency = dto.Currency;
-        property.Size = dto.Size;
-        property.Rooms = dto.Rooms;
-        property.Bedrooms = dto.Bedrooms;
-        property.Bathrooms = dto.Bathrooms;
-        property.Floor = dto.Floor;
-        property.TotalFloors = dto.TotalFloors;
-        property.YearBuilt = dto.YearBuilt;
-        property.EnergyClass = dto.EnergyClass;
-        property.Latitude = dto.Latitude;
-        property.Longitude = dto.Longitude;
-        property.IsFeatured = dto.IsFeatured;
-        property.AgentId = dto.AgentId;
+        property.PropertyType    = dto.PropertyType;
+        property.Price           = dto.Price;
+        property.Currency        = dto.Currency;
+        property.Size            = dto.Size;
+        property.Rooms           = dto.Rooms;
+        property.Bedrooms        = dto.Bedrooms;
+        property.Bathrooms       = dto.Bathrooms;
+        property.Floor           = dto.Floor;
+        property.TotalFloors     = dto.TotalFloors;
+        property.YearBuilt       = dto.YearBuilt;
+        property.EnergyClass     = dto.EnergyClass;
+        property.Latitude        = dto.Latitude;
+        property.Longitude       = dto.Longitude;
+        property.IsFeatured      = dto.IsFeatured;
+        property.AgentId         = dto.AgentId;
 
-        // Detach tracked children so EF won't generate DELETEs for them via
-        // the change tracker — we delete them directly below using SQL.
-        var dbCtx = (DbContext)_db;
-        foreach (var t in property.Translations.ToList())
-            dbCtx.Entry(t).State = EntityState.Detached;
-        foreach (var f in property.Features.ToList())
-            dbCtx.Entry(f).State = EntityState.Detached;
-        property.Translations.Clear();
-        property.Features.Clear();
+        // ── Save 1: parent scalar fields only ────────────────────────────────────
+        await _db.SaveChangesAsync(ct);
 
-        // Delete old rows directly, bypassing the change tracker so the
-        // (PropertyId, Language) unique index never sees old+new simultaneously.
+        // ── Save 2: replace translations and features atomically ─────────────────
         await _db.PropertyTranslations.Where(t => t.PropertyId == id).ExecuteDeleteAsync(ct);
         await _db.PropertyFeatures.Where(f => f.PropertyId == id).ExecuteDeleteAsync(ct);
 
         foreach (var (lang, trans) in dto.Translations)
         {
             if (string.IsNullOrWhiteSpace(trans.Title)) continue;
-            property.Translations.Add(new PropertyTranslation
+            _db.PropertyTranslations.Add(new PropertyTranslation
             {
-                PropertyId = property.Id,
-                Language = lang,
-                Title = trans.Title,
+                PropertyId  = id,
+                Language    = lang,
+                Title       = trans.Title,
                 Description = trans.Description ?? string.Empty,
-                Address = trans.Address ?? string.Empty,
-                City = trans.City ?? string.Empty,
-                District = trans.District,
+                Address     = trans.Address     ?? string.Empty,
+                City        = trans.City        ?? string.Empty,
+                District    = trans.District,
             });
         }
 
         foreach (var feature in dto.Features.Where(f => !string.IsNullOrWhiteSpace(f)))
-            property.Features.Add(new PropertyFeature
-            {
-                PropertyId = property.Id,
-                Feature = feature
-            });
+            _db.PropertyFeatures.Add(new PropertyFeature { PropertyId = id, Feature = feature });
 
         await _db.SaveChangesAsync(ct);
 
         await _audit.LogAsync(
             "Property.Update",
             entityType: nameof(Property),
-            entityId: property.Id,
-            details: new { property.Slug, property.PropertyType, property.TransactionType, property.Price },
+            entityId:   property.Id,
+            details:    new { property.Slug, property.PropertyType, property.TransactionType, property.Price },
             ct: ct);
 
         var actorId = _currentUser.UserId;
@@ -639,8 +624,10 @@ public class PropertyService
             PropertyType = p.PropertyType,
             TransactionType = p.TransactionType,
             Status = p.Status,
-            PublishedAt = p.PublishedAt,
-            CreatedAt = p.CreatedAt,
+            PublishedAt    = p.PublishedAt,
+            CreatedAt      = p.CreatedAt,
+            CoverImageUrl  = p.Images.FirstOrDefault(i => i.IsCover)?.Url
+                          ?? p.Images.OrderBy(i => i.SortOrder).FirstOrDefault()?.Url,
             Agent = new TeamMemberListDto
             {
                 Id = p.Agent.Id,

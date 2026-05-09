@@ -28,8 +28,8 @@ public class PublicLookupService
         var successfulDeals = await _db.Properties
             .CountAsync(p => p.Status == PropertyStatus.Sold && p.UpdatedAt >= oneYearAgo, ct);
 
-        var yearsExperience     = await _settings.GetIntAsync("stats.years_experience",     8,  ct);
-        var satisfactionPercent = await _settings.GetIntAsync("stats.satisfaction_percent", 98, ct);
+        var yearsExperience     = await _settings.GetIntAsync("stats.years_experience",     0,  ct);
+        var satisfactionPercent = await _settings.GetIntAsync("stats.satisfaction_percent", 0,  ct);
 
         return new PublicStatsDto
         {

@@ -121,38 +121,40 @@ public class OfferedServiceService
     public async Task UpdateAsync(
         Guid id, UpdateServiceDto dto, CancellationToken ct = default)
     {
-        var service = await _db.Services
-            .Include(s => s.Translations)
+        var service = await _db.Services                 // NO .Include
             .FirstOrDefaultAsync(s => s.Id == id, ct)
             ?? throw new KeyNotFoundException($"Service {id} not found.");
 
         var enName = dto.Translations.TryGetValue(Language.En, out var enTrans)
-            ? enTrans.Name
-            : dto.Translations.Values.First().Name;
+            && !string.IsNullOrWhiteSpace(enTrans.Name)
+                ? enTrans.Name
+                : dto.Translations.Values.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.Name))?.Name
+                  ?? throw new ArgumentException("At least one language must have a name.");
 
-        var baseSlug = SlugHelper.GenerateSlug(enName);
-        service.Slug = await SlugHelper.UniqueAsync(baseSlug,
+        service.Slug      = await SlugHelper.UniqueAsync(
+            SlugHelper.GenerateSlug(enName),
             s => _db.Services.AnyAsync(x => x.Slug == s && x.Id != id, ct));
-        service.IconName = dto.IconName;
+        service.IconName  = dto.IconName;
         service.SortOrder = dto.SortOrder;
 
-        var dbCtx = (DbContext)_db;
-        foreach (var t in service.Translations.ToList())
-            dbCtx.Entry(t).State = EntityState.Detached;
-        service.Translations.Clear();
+        // ── Save 1: parent scalar fields only ────────────────────────────────────
+        await _db.SaveChangesAsync(ct);
 
-        await _db.ServiceTranslations.Where(t => t.ServiceId == id).ExecuteDeleteAsync(ct);
+        // ── Save 2: replace translations atomically ──────────────────────────────
+        await _db.ServiceTranslations
+            .Where(t => t.ServiceId == id)
+            .ExecuteDeleteAsync(ct);
 
         foreach (var (lang, trans) in dto.Translations)
         {
             if (string.IsNullOrWhiteSpace(trans.Name)) continue;
-            service.Translations.Add(new ServiceTranslation
+            _db.ServiceTranslations.Add(new ServiceTranslation
             {
-                ServiceId = service.Id,
-                Language = lang,
-                Name = trans.Name,
+                ServiceId   = id,
+                Language    = lang,
+                Name        = trans.Name,
                 Description = trans.Description,
-                PriceInfo = trans.PriceInfo
+                PriceInfo   = trans.PriceInfo,
             });
         }
 
