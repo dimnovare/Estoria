@@ -250,6 +250,24 @@ public class SiteSettingService
             : defaultValue;
     }
 
+    /// <summary>
+    /// Returns null when the setting is absent or its stored value is empty/non-numeric.
+    /// Callers that need to hide a UI block when the admin clears the value should use
+    /// this instead of GetIntAsync (which returns a hardcoded fallback).
+    /// </summary>
+    public async Task<int?> GetNullableIntAsync(string key, CancellationToken ct = default)
+    {
+        var raw = await _db.SiteSettings
+            .AsNoTracking()
+            .Where(s => s.Key == key)
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync(ct);
+
+        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
+            ? n
+            : null;
+    }
+
     public async Task<string> GetStringAsync(string key, string defaultValue, CancellationToken ct = default)
     {
         var raw = await _db.SiteSettings
