@@ -12,7 +12,8 @@ namespace Estoria.Infrastructure.External;
 public class NoOpMailboxService : IMailboxService
 {
     public Task<MailboxPage<MailboxMessageDto>> ListInboxAsync(
-        int top = 50, string? skipToken = null, bool unreadOnly = false,
+        string folder = "inbox", int top = 50, string? skipToken = null,
+        bool unreadOnly = false, bool hasAttachments = false,
         CancellationToken ct = default)
         => Task.FromResult(new MailboxPage<MailboxMessageDto>
         {

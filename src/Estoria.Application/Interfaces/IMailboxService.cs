@@ -11,13 +11,16 @@ namespace Estoria.Application.Interfaces;
 public interface IMailboxService
 {
     /// <summary>
-    /// Lists Inbox messages newest-first. <paramref name="skipToken"/> is the
-    /// opaque cursor returned by a previous call; null fetches the first page.
+    /// Lists messages from the specified mail folder newest-first.
+    /// <paramref name="skipToken"/> is the opaque cursor returned by a previous
+    /// call; null fetches the first page.
     /// </summary>
     Task<MailboxPage<MailboxMessageDto>> ListInboxAsync(
+        string folder = "inbox",
         int top = 50,
         string? skipToken = null,
         bool unreadOnly = false,
+        bool hasAttachments = false,
         CancellationToken ct = default);
 
     /// <summary>Full message including body HTML and attachment manifest.</summary>

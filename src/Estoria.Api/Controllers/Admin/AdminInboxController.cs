@@ -52,14 +52,78 @@ public class AdminInboxController : ControllerBase
 
     [HttpGet("messages")]
     public async Task<IActionResult> List(
+        [FromQuery] string folder        = "inbox",
+        [FromQuery] bool unreadOnly      = false,
+        [FromQuery] bool hasAttachments  = false,
+        [FromQuery] bool linkedToDeal    = false,
         [FromQuery] int top              = 50,
         [FromQuery] string? skipToken    = null,
-        [FromQuery] bool unreadOnly      = false,
         CancellationToken ct             = default)
     {
         top = Math.Clamp(top, 1, 100);
 
-        var page = await _mailbox.ListInboxAsync(top, skipToken, unreadOnly, ct);
+        // ── Archive: read from DB (IsArchived=true), fetch from Graph by ID ──
+        if (folder == "archive")
+        {
+            var archivedLinks = await _db.MailboxLinks
+                .AsNoTracking()
+                .Where(m => m.IsArchived)
+                .OrderByDescending(m => m.ReceivedAt)
+                .Take(top)
+                .Select(l => new InboxLinkProjection
+                {
+                    GraphMessageId = l.GraphMessageId,
+                    ContactId      = l.ContactId,
+                    ContactName    = l.Contact != null ? l.Contact.FullName : null,
+                    DealId         = l.DealId,
+                    DealTitle      = l.Deal != null ? l.Deal.Title : null,
+                    PropertyId     = l.PropertyId,
+                    IsArchived     = l.IsArchived,
+                })
+                .ToListAsync(ct);
+
+            var items = new List<object>();
+            foreach (var link in archivedLinks)
+            {
+                var msg = await _mailbox.GetMessageAsync(link.GraphMessageId, ct);
+                if (msg is null) continue;
+                items.Add(MapToFlatDto(msg, link, "archive"));
+            }
+            return Ok(new { items, nextSkipToken = (string?)null });
+        }
+
+        // ── Linked-to-deal: read IDs from DB, fetch from Graph by ID ──
+        if (linkedToDeal)
+        {
+            var linkedLinks = await _db.MailboxLinks
+                .AsNoTracking()
+                .Where(m => m.DealId != null && !m.IsArchived)
+                .OrderByDescending(m => m.ReceivedAt)
+                .Take(top)
+                .Select(l => new InboxLinkProjection
+                {
+                    GraphMessageId = l.GraphMessageId,
+                    ContactId      = l.ContactId,
+                    ContactName    = l.Contact != null ? l.Contact.FullName : null,
+                    DealId         = l.DealId,
+                    DealTitle      = l.Deal != null ? l.Deal.Title : null,
+                    PropertyId     = l.PropertyId,
+                    IsArchived     = l.IsArchived,
+                })
+                .ToListAsync(ct);
+
+            var items = new List<object>();
+            foreach (var link in linkedLinks)
+            {
+                var msg = await _mailbox.GetMessageAsync(link.GraphMessageId, ct);
+                if (msg is null) continue;
+                items.Add(MapToFlatDto(msg, link, folder));
+            }
+            return Ok(new { items, nextSkipToken = (string?)null });
+        }
+
+        // ── Standard folder (inbox / sent / all): delegate to Graph ──
+        var page = await _mailbox.ListInboxAsync(folder, top, skipToken, unreadOnly, hasAttachments, ct);
 
         // Enrich with whatever links we already have so the grid can show
         // "linked to <contact>". One query, IN clause across the page.
@@ -91,28 +155,7 @@ public class AdminInboxController : ControllerBase
             items = page.Items.Select(m =>
             {
                 byId.TryGetValue(m.Id, out var l);
-                return new
-                {
-                    id              = m.Id,
-                    folder          = "Inbox",
-                    from            = m.From?.Address ?? string.Empty,
-                    fromName        = !string.IsNullOrWhiteSpace(m.From?.Name)
-                                        ? m.From!.Name
-                                        : !string.IsNullOrWhiteSpace(m.From?.Address)
-                                            ? m.From!.Address
-                                            : "(unknown sender)",
-                    to              = m.ToRecipients.Select(t => t.Address).ToArray(),
-                    subject         = m.Subject,
-                    preview         = m.BodyPreview,
-                    receivedAt      = m.ReceivedAt,
-                    isRead          = m.IsRead,
-                    hasAttachments  = m.HasAttachments,
-                    linkedContactId   = l?.ContactId,
-                    linkedContactName = l?.ContactName,
-                    linkedDealId      = l?.DealId,
-                    linkedDealTitle   = l?.DealTitle,
-                    linkedPropertyId  = l?.PropertyId,
-                };
+                return MapToFlatDto(m, l, folder);
             }).ToList(),
             nextSkipToken = page.NextSkipToken,
         });
@@ -344,6 +387,42 @@ public class AdminInboxController : ControllerBase
         public Guid? DealId { get; set; }
         public Guid? PropertyId { get; set; }
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    //  Helpers
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Maps a Graph message DTO + optional DB link projection to the flat
+    /// anonymous shape that InboxMessageSummary on the frontend expects.
+    /// Accepts both <see cref="MailboxMessageDto"/> (list path) and the
+    /// derived <see cref="MailboxMessageDetailDto"/> (archive/linked path).
+    /// </summary>
+    private static object MapToFlatDto(
+        MailboxMessageDto m,
+        InboxLinkProjection? l,
+        string folder) => new
+    {
+        id             = m.Id,
+        folder,
+        from           = m.From?.Address ?? string.Empty,
+        fromName       = !string.IsNullOrWhiteSpace(m.From?.Name)
+                           ? m.From!.Name
+                           : !string.IsNullOrWhiteSpace(m.From?.Address)
+                               ? m.From!.Address
+                               : "(unknown sender)",
+        to             = m.ToRecipients.Select(t => t.Address).ToArray(),
+        subject        = m.Subject,
+        preview        = m.BodyPreview,
+        receivedAt     = m.ReceivedAt,
+        isRead         = m.IsRead,
+        hasAttachments = m.HasAttachments,
+        linkedContactId   = l?.ContactId,
+        linkedContactName = l?.ContactName,
+        linkedDealId      = l?.DealId,
+        linkedDealTitle   = l?.DealTitle,
+        linkedPropertyId  = l?.PropertyId,
+    };
 
     private class InboxLinkProjection
     {

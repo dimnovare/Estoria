@@ -47,14 +47,17 @@ public class GraphMailService : IMailboxService
     // ─────────────────────────────────────────────────────────────────────
 
     public async Task<MailboxPage<MailboxMessageDto>> ListInboxAsync(
+        string folder = "inbox",
         int top = 50,
         string? skipToken = null,
         bool unreadOnly = false,
+        bool hasAttachments = false,
         CancellationToken ct = default)
     {
         return await WithRetryAsync(async ct2 =>
         {
-            var msgs = _graph.Users[_mailbox].MailFolders["Inbox"].Messages;
+            var folderPath = ToGraphFolder(folder);
+            var msgs = _graph.Users[_mailbox].MailFolders[folderPath].Messages;
 
             // Graph v5 doesn't expose $skiptoken on QueryParameters — follow-up
             // pages use WithUrl(nextLink). We treat the cursor as an opaque
@@ -66,8 +69,12 @@ public class GraphMailService : IMailboxService
                     rc.QueryParameters.Top     = top;
                     rc.QueryParameters.Orderby = new[] { "receivedDateTime desc" };
                     rc.QueryParameters.Select  = MessageSelect;
-                    if (unreadOnly)
-                        rc.QueryParameters.Filter = "isRead eq false";
+
+                    var ofilters = new List<string>();
+                    if (unreadOnly)      ofilters.Add("isRead eq false");
+                    if (hasAttachments)  ofilters.Add("hasAttachments eq true");
+                    if (ofilters.Count > 0)
+                        rc.QueryParameters.Filter = string.Join(" and ", ofilters);
                 }, ct2);
 
             return new MailboxPage<MailboxMessageDto>
@@ -77,6 +84,14 @@ public class GraphMailService : IMailboxService
             };
         }, "ListInbox", ct);
     }
+
+    private static string ToGraphFolder(string folder) => folder switch
+    {
+        "sent"    => "SentItems",
+        "archive" => "Archive",
+        "all"     => "AllItems",
+        _         => "Inbox",      // "inbox" + unknown values
+    };
 
     // ─────────────────────────────────────────────────────────────────────
     //  Single message + attachments
