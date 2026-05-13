@@ -52,4 +52,13 @@ public class AdminServicesController : ControllerBase
         await _svc.DeleteAsync(id, ct);
         return NoContent();
     }
+
+    [HttpPatch("reorder")]
+    public async Task<IActionResult> Reorder(
+        [FromBody] List<ServiceReorderDto> items,
+        CancellationToken ct = default)
+    {
+        await _svc.ReorderAsync(items, ct);
+        return NoContent();
+    }
 }

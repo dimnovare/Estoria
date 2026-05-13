@@ -42,9 +42,9 @@ public class TeamService
         var member = await _db.TeamMembers
             .AsNoTracking()
             .Include(m => m.Translations)
-            .Include(m => m.Properties)
+            .Include(m => m.Properties.Where(p => p.Status == PropertyStatus.Active))
                 .ThenInclude(p => p.Translations)
-            .Include(m => m.Properties)
+            .Include(m => m.Properties.Where(p => p.Status == PropertyStatus.Active))
                 .ThenInclude(p => p.Images.Where(i => i.IsCover))
             .FirstOrDefaultAsync(m => m.Slug == slug && m.IsActive, ct);
 

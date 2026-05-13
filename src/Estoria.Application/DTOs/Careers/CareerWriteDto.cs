@@ -16,4 +16,7 @@ public class CreateCareerDto
     public Dictionary<Language, CareerTranslationDto> Translations { get; set; } = [];
 }
 
-public class UpdateCareerDto : CreateCareerDto { }
+public class UpdateCareerDto : CreateCareerDto
+{
+    public bool IsActive { get; set; } = true;
+}

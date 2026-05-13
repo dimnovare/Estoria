@@ -193,6 +193,22 @@ public class NewsletterService
         return c is null ? null : ToCampaignDto(c);
     }
 
+    public async Task DeleteCampaignAsync(Guid id, CancellationToken ct = default)
+    {
+        var campaign = await _db.NewsletterCampaigns.FindAsync([id], ct)
+            ?? throw new KeyNotFoundException($"Campaign {id} not found.");
+
+        _db.NewsletterCampaigns.Remove(campaign);
+        await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            "Newsletter.DeleteCampaign",
+            entityType: nameof(NewsletterCampaign),
+            entityId: campaign.Id,
+            details: new { campaign.Subject, campaign.Status },
+            ct: ct);
+    }
+
     /// <summary>
     /// Synchronous send-now: creates the campaign row, dispatches one email
     /// per active subscriber (filtered by language when set), and tallies the

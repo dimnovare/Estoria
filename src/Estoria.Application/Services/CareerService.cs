@@ -57,12 +57,13 @@ public class CareerService
     // -------------------------------------------------------------------------
 
     public async Task<List<CareerListDto>> GetAllAdminAsync(
-        Language lang, bool includeArchived = false, CancellationToken ct = default)
+        Language lang, CancellationToken ct = default)
     {
+        // Admin sees ALL postings — active and inactive — so the IsActive
+        // toggle can be managed from the admin UI without rows disappearing.
         var postings = await _db.CareerPostings
             .AsNoTracking()
             .Include(cp => cp.Translations)
-            .Where(cp => includeArchived || cp.IsActive)
             .OrderByDescending(cp => cp.CreatedAt)
             .ToListAsync(ct);
 
@@ -119,9 +120,10 @@ public class CareerService
                 : dto.Translations.Values.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.Title))?.Title
                   ?? throw new ArgumentException("At least one language must have a title.");
 
-        posting.Slug = await SlugHelper.UniqueAsync(
+        posting.Slug     = await SlugHelper.UniqueAsync(
             SlugHelper.GenerateSlug(enTitle),
             s => _db.CareerPostings.AnyAsync(x => x.Slug == s && x.Id != id, ct));
+        posting.IsActive = dto.IsActive;
 
         // ── Save 1: parent scalar fields only ────────────────────────────────────
         await _db.SaveChangesAsync(ct);

@@ -53,6 +53,14 @@ public class AdminNewsletterController : ControllerBase
         return c is null ? NotFound() : Ok(c);
     }
 
+    [HttpDelete("campaigns/{id:guid}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> DeleteCampaign(Guid id, CancellationToken ct = default)
+    {
+        await _svc.DeleteCampaignAsync(id, ct);
+        return NoContent();
+    }
+
     /// <summary>
     /// Synchronous send-now. Brokerage subscriber lists are small enough that
     /// the request will complete in seconds; if list size grows we'll move

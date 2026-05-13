@@ -142,7 +142,7 @@ public class PropertyService
             .Include(p => p.Images.OrderBy(i => i.SortOrder))
             .Include(p => p.Features)
             .Include(p => p.Agent).ThenInclude(a => a.Translations)
-            .FirstOrDefaultAsync(p => p.Slug == slug, ct);
+            .FirstOrDefaultAsync(p => p.Slug == slug && p.Status == PropertyStatus.Active, ct);
 
         return property is null ? null : ToDetailDto(property, lang);
     }

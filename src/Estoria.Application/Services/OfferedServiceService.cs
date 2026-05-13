@@ -170,6 +170,23 @@ public class OfferedServiceService
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task ReorderAsync(
+        List<ServiceReorderDto> items, CancellationToken ct = default)
+    {
+        var ids      = items.Select(x => x.Id).ToList();
+        var services = await _db.Services
+            .Where(s => ids.Contains(s.Id))
+            .ToListAsync(ct);
+
+        foreach (var item in items)
+        {
+            var s = services.FirstOrDefault(x => x.Id == item.Id);
+            if (s is not null) s.SortOrder = item.SortOrder;
+        }
+
+        await _db.SaveChangesAsync(ct);
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------

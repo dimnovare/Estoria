@@ -15,15 +15,13 @@ public class AdminCareersController : ControllerBase
     public AdminCareersController(CareerService svc) => _svc = svc;
 
     [HttpGet]
-    public async Task<IActionResult> GetAll(
-        [FromQuery] bool includeArchived = false,
-        CancellationToken ct = default)
-        => Ok(await _svc.GetAllAdminAsync(Domain.Enums.Language.En, includeArchived, ct));
+    public async Task<IActionResult> GetAll(CancellationToken ct = default)
+        => Ok(await _svc.GetAllAdminAsync(Domain.Enums.Language.En, ct));
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
-        var all = await _svc.GetAllAdminAsync(Domain.Enums.Language.En, includeArchived: true, ct);
+        var all = await _svc.GetAllAdminAsync(Domain.Enums.Language.En, ct);
         var result = all.FirstOrDefault(c => c.Id == id);
         return result is null ? NotFound() : Ok(result);
     }
