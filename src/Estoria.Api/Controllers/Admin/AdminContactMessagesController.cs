@@ -34,4 +34,18 @@ public class AdminContactMessagesController : ControllerBase
         await _svc.UpdateStatusAsync(id, status, ct);
         return NoContent();
     }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct = default)
+    {
+        try
+        {
+            await _svc.DeleteAsync(id, ct);
+            return NoContent();
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+    }
 }

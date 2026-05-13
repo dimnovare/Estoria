@@ -112,6 +112,14 @@ public class ContactMessageService
             ct: ct);
     }
 
+    public async Task DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        var message = await _db.ContactMessages.FindAsync([id], ct)
+            ?? throw new KeyNotFoundException($"ContactMessage {id} not found.");
+        _db.ContactMessages.Remove(message);
+        await _db.SaveChangesAsync(ct);
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
