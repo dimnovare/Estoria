@@ -27,8 +27,8 @@ public class R2FileStorageService : IFileStorageService, IDisposable
         var credentials = new BasicAWSCredentials(accessKey, secretKey);
         var s3Config    = new AmazonS3Config
         {
-            ServiceURL    = $"https://{accountId}.r2.cloudflarestorage.com",
-            ForcePathStyle = true
+            ServiceURL     = $"https://{accountId}.r2.cloudflarestorage.com",
+            ForcePathStyle = true,
         };
 
         _client = new AmazonS3Client(credentials, s3Config);
@@ -122,11 +122,12 @@ public class R2FileStorageService : IFileStorageService, IDisposable
     {
         await _client.PutObjectAsync(new PutObjectRequest
         {
-            BucketName      = bucket,
-            Key             = key,
-            InputStream     = stream,
-            ContentType     = contentType,
-            AutoCloseStream = false
+            BucketName            = bucket,
+            Key                   = key,
+            InputStream           = stream,
+            ContentType           = contentType,
+            AutoCloseStream       = false,
+            DisablePayloadSigning = true,   // belt-and-suspenders: R2 rejects signed payloads too
         }, ct);
     }
 
