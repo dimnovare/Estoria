@@ -9,16 +9,17 @@ namespace Estoria.Api.Controllers.Public;
 
 /// <summary>
 /// Public XML feeds — sitemap (and later: RSS, JSON-LD listing exports).
-/// Browser-cached for an hour so crawlers don't hammer Postgres on every
-/// fetch; we don't bother with stale-while-revalidate yet because the cost
-/// of a fresh build is low.
+///
+/// Route is the root-level /sitemap.xml so search engines find it without
+/// a sitemap directive in robots.txt (though adding one there too is wise).
+/// Cached for an hour; fresh build cost is cheap relative to crawler load.
 /// </summary>
 [ApiController]
-[Route("feeds")]
+[Route("")]          // combined with [HttpGet("sitemap.xml")] → /sitemap.xml
 [AllowAnonymous]
 public class FeedsController : ControllerBase
 {
-    private const string PublicBaseUrl = "https://estoria.estate";
+    private const string BaseUrl = "https://estoria.estate";
 
     private readonly IAppDbContext _db;
 
@@ -28,24 +29,29 @@ public class FeedsController : ControllerBase
     [ResponseCache(Duration = 3600, Location = ResponseCacheLocation.Any)]
     public async Task<IActionResult> Sitemap(CancellationToken ct = default)
     {
-        var sb = new StringBuilder(8 * 1024);
+        var sb = new StringBuilder(16 * 1024);
         sb.AppendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
         sb.AppendLine("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">");
 
-        // Static landing pages — these don't change often, so a weekly hint
-        // is plenty for crawlers to refresh.
-        string[] staticPaths = { "/", "/properties", "/about", "/services",
-                                 "/team", "/contact", "/careers", "/blog", "/privacy" };
-        foreach (var p in staticPaths)
+        // ── Static pages ──────────────────────────────────────────────────────
+        var staticPages = new (string Path, string Freq, string Priority)[]
         {
-            sb.Append("  <url><loc>").Append(PublicBaseUrl).Append(p)
-              .Append("</loc><changefreq>weekly</changefreq></url>")
-              .AppendLine();
-        }
+            ("/",           "weekly",  "1.0"),
+            ("/properties", "daily",   "0.9"),
+            ("/about",      "monthly", "0.8"),
+            ("/team",       "monthly", "0.7"),
+            ("/services",   "monthly", "0.7"),
+            ("/blog",       "weekly",  "0.7"),
+            ("/careers",    "monthly", "0.5"),
+            ("/contact",    "monthly", "0.6"),
+            ("/privacy",    "yearly",  "0.3"),
+        };
+        foreach (var (path, freq, priority) in staticPages)
+            AppendUrl(sb, $"{BaseUrl}{path}", freq, priority);
 
-        // Active properties only — Draft/Sold/Rented/Archived shouldn't be
-        // discoverable from the sitemap. lastmod helps crawlers prioritize
-        // newly edited listings.
+        // ── Active (live) properties ──────────────────────────────────────────
+        // Draft / Sold / Rented / Archived listings are excluded so crawlers
+        // don't index pages that redirect or 404. PropertyStatus.Active = 1.
         var properties = await _db.Properties
             .AsNoTracking()
             .Where(p => p.Status == PropertyStatus.Active)
@@ -53,15 +59,10 @@ public class FeedsController : ControllerBase
             .ToListAsync(ct);
 
         foreach (var p in properties)
-        {
-            sb.Append("  <url><loc>").Append(PublicBaseUrl).Append("/property/").Append(p.Slug)
-              .Append("</loc><lastmod>").Append(p.UpdatedAt.ToString("yyyy-MM-dd"))
-              .Append("</lastmod><changefreq>weekly</changefreq></url>")
-              .AppendLine();
-        }
+            AppendUrl(sb, $"{BaseUrl}/properties/{p.Slug}", "weekly", "0.8",
+                p.UpdatedAt.ToString("yyyy-MM-dd"));
 
-        // Published blog posts — drafts and scheduled posts stay out of the
-        // crawl index until they actually go live.
+        // ── Published blog posts ──────────────────────────────────────────────
         var posts = await _db.BlogPosts
             .AsNoTracking()
             .Where(b => b.Status == BlogPostStatus.Published)
@@ -69,14 +70,34 @@ public class FeedsController : ControllerBase
             .ToListAsync(ct);
 
         foreach (var b in posts)
-        {
-            sb.Append("  <url><loc>").Append(PublicBaseUrl).Append("/blog/").Append(b.Slug)
-              .Append("</loc><lastmod>").Append(b.UpdatedAt.ToString("yyyy-MM-dd"))
-              .Append("</lastmod><changefreq>monthly</changefreq></url>")
-              .AppendLine();
-        }
+            AppendUrl(sb, $"{BaseUrl}/blog/{b.Slug}", "monthly", "0.6",
+                b.UpdatedAt.ToString("yyyy-MM-dd"));
+
+        // ── Active team members ───────────────────────────────────────────────
+        var team = await _db.TeamMembers
+            .AsNoTracking()
+            .Where(t => t.IsActive)
+            .Select(t => new { t.Slug })
+            .ToListAsync(ct);
+
+        foreach (var t in team)
+            AppendUrl(sb, $"{BaseUrl}/team/{t.Slug}", "monthly", "0.5");
 
         sb.AppendLine("</urlset>");
         return Content(sb.ToString(), "application/xml", Encoding.UTF8);
+    }
+
+    private static void AppendUrl(
+        StringBuilder sb, string loc,
+        string changefreq, string priority,
+        string? lastmod = null)
+    {
+        sb.AppendLine("  <url>");
+        sb.AppendLine($"    <loc>{loc}</loc>");
+        if (lastmod is not null)
+            sb.AppendLine($"    <lastmod>{lastmod}</lastmod>");
+        sb.AppendLine($"    <changefreq>{changefreq}</changefreq>");
+        sb.AppendLine($"    <priority>{priority}</priority>");
+        sb.AppendLine("  </url>");
     }
 }
