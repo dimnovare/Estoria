@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Estoria.Api.Controllers.Admin;
 
@@ -27,6 +28,7 @@ public class AdminPropertiesController : ControllerBase
     private readonly ICurrentUserService _currentUser;
     private readonly IBackgroundJobClient _jobs;
     private readonly IWebHostEnvironment _env;
+    private readonly ILogger<AdminPropertiesController> _logger;
 
     public AdminPropertiesController(
         PropertyService svc,
@@ -34,7 +36,8 @@ public class AdminPropertiesController : ControllerBase
         IFileStorageService storage,
         ICurrentUserService currentUser,
         IBackgroundJobClient jobs,
-        IWebHostEnvironment env)
+        IWebHostEnvironment env,
+        ILogger<AdminPropertiesController> logger)
     {
         _svc         = svc;
         _db          = db;
@@ -42,6 +45,7 @@ public class AdminPropertiesController : ControllerBase
         _currentUser = currentUser;
         _jobs        = jobs;
         _env         = env;
+        _logger      = logger;
     }
 
     [HttpGet]
@@ -185,24 +189,43 @@ public class AdminPropertiesController : ControllerBase
             // Originals land in the PRIVATE bucket; they're never publicly
             // URL-able. The processing job picks the row up by id and writes
             // the watermarked variants to the public bucket.
-            await using var stream = file.OpenReadStream();
-            var originalKey = await _storage.UploadPrivateAsync(
-                stream,
-                file.FileName,
-                file.ContentType,
-                folder: $"properties/originals/{id}",
-                ct);
-
-            // Dev: also write the original to the public folder so the admin UI
-            // can render the image immediately without waiting for Hangfire.
+            string originalKey;
             string uploadedPublicUrl = string.Empty;
-            if (_env.IsDevelopment())
+
+            try
             {
-                await using var pubStream = file.OpenReadStream();
-                uploadedPublicUrl = await _storage.UploadPublicAsync(
-                    pubStream, file.FileName, file.ContentType,
-                    folder: $"properties/images/{id}",
+                await using var stream = file.OpenReadStream();
+                originalKey = await _storage.UploadPrivateAsync(
+                    stream,
+                    file.FileName,
+                    file.ContentType,
+                    folder: $"properties/originals/{id}",
                     ct);
+
+                // Dev: also write the original to the public folder so the admin UI
+                // can render the image immediately without waiting for Hangfire.
+                if (_env.IsDevelopment())
+                {
+                    await using var pubStream = file.OpenReadStream();
+                    uploadedPublicUrl = await _storage.UploadPublicAsync(
+                        pubStream, file.FileName, file.ContentType,
+                        folder: $"properties/images/{id}",
+                        ct);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Image upload failed for property {PropertyId}. " +
+                    "File: {FileName}, Size: {Size} bytes. Error: {Error}",
+                    id, file.FileName, file.Length, ex.Message);
+
+                return StatusCode(500, new
+                {
+                    error  = "Image upload failed",
+                    detail = ex.Message,   // safe — only admins reach this endpoint
+                    type   = ex.GetType().Name,
+                });
             }
 
             var image = new PropertyImage

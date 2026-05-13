@@ -24,15 +24,42 @@ public static class DependencyInjection
 
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
-        // Dev (webRootPath provided) → local disk; Prod → Cloudflare R2
+        // Dev (webRootPath provided) → local disk; Prod → Cloudflare R2.
+        // A startup log line tells operators exactly which storage is active,
+        // and a clear warning fires when the R2 keys are missing so the problem
+        // shows up in deploy logs rather than as a cryptic 500 on first upload.
+        var r2AccountId = config["Storage:AccountId"];
+        var r2AccessKey = config["Storage:AccessKeyId"];
+        var r2Secret    = config["Storage:SecretAccessKey"];
+        var r2Public    = config["Storage:PublicBucket"];
+        var r2Private   = config["Storage:PrivateBucket"];
+
         if (webRootPath is not null)
         {
             services.AddSingleton<IFileStorageService>(
                 new LocalFileStorageService(webRootPath, config));
+            Console.WriteLine("[Estoria] Storage: using LOCAL file storage (dev mode)");
         }
         else
         {
-            services.AddScoped<IFileStorageService, R2FileStorageService>();
+            if (string.IsNullOrWhiteSpace(r2AccountId) ||
+                string.IsNullOrWhiteSpace(r2AccessKey)  ||
+                string.IsNullOrWhiteSpace(r2Secret))
+            {
+                Console.Error.WriteLine(
+                    "[Estoria] ⚠ Storage: R2 credentials not configured — " +
+                    "image uploads will fail. Set Storage:AccountId, " +
+                    "Storage:AccessKeyId and Storage:SecretAccessKey.");
+            }
+            else
+            {
+                Console.WriteLine(
+                    $"[Estoria] Storage: using R2 bucket '{r2Public}' / '{r2Private}'");
+            }
+
+            // R2FileStorageService holds an AmazonS3Client which is thread-safe
+            // and expensive to construct; singleton is correct here.
+            services.AddSingleton<IFileStorageService, R2FileStorageService>();
         }
 
         // Email: dev → console logger; prod → Resend HTTP API
