@@ -35,6 +35,11 @@ public class DataSeeder
         // template after the AddTasksAndBirthday migration.
         await SeedBirthdayTemplateAsync();
 
+        // Extra page-content keys added after the initial seed. Each key has
+        // its own guard so they are inserted into existing DBs without
+        // re-seeding everything.
+        await SeedPageContentExtrasAsync();
+
         // Guard: use a single lightweight check — if the first seed key already exists, skip all
         if (await _db.PageContents.AnyAsync(p => p.PageKey == "homepage.hero"))
             return;
@@ -1147,6 +1152,85 @@ public class DataSeeder
                 $"[Estoria][Seed] TODO: Found {unlinkedTeam} active team member(s) " +
                 "without linked Users — create them via admin UI when it lands.");
         }
+    }
+
+    // ── Extra page-content seeds (idempotent per-key) ─────────────────────────
+
+    /// <summary>
+    /// Seeds page-content keys added after the initial data migration.
+    /// Each key has its own existence check so this method is safe to run
+    /// against an already-populated database.
+    /// </summary>
+    private async Task SeedPageContentExtrasAsync()
+    {
+        var extras = new List<(string key, (Language lang, string title, string body)[] trans)>
+        {
+            ("about.values.integrity", new[]
+            {
+                (Language.En, "Integrity",            "Transparency and honesty guide every interaction. We build lasting relationships founded on trust."),
+                (Language.Et, "Terviklikkus",         "Läbipaistvus ja ausus juhivad iga suhtlust. Loome kestvaid suhteid, mille aluseks on usaldus."),
+                (Language.Ru, "Честность",            "Прозрачность и честность определяют каждое взаимодействие. Мы строим долгосрочные отношения, основанные на доверии."),
+            }),
+            ("about.values.excellence", new[]
+            {
+                (Language.En, "Excellence",           "We pursue perfection in every detail — from property curation to client communication."),
+                (Language.Et, "Tipptase",             "Püüdleme täiuslikkuse poole igas detailis — kinnisvara valikust kuni kliendikommunikatsioonini."),
+                (Language.Ru, "Совершенство",         "Мы стремимся к совершенству в каждой детали — от подбора недвижимости до общения с клиентами."),
+            }),
+            ("about.values.discretion", new[]
+            {
+                (Language.En, "Discretion",           "Your privacy is paramount. We handle every transaction with the utmost confidentiality."),
+                (Language.Et, "Diskreetsus",          "Teie privaatsus on meie jaoks esmatähtis. Käsitleme iga tehingut täieliku konfidentsiaalsusega."),
+                (Language.Ru, "Конфиденциальность",   "Ваша конфиденциальность — наш приоритет. Мы проводим каждую сделку с максимальной осторожностью."),
+            }),
+            ("about.cta", new[]
+            {
+                (Language.En, "Ready to Find Your Future?",       "Let our team guide you to the perfect property. We'd love to hear from you."),
+                (Language.Et, "Valmis leidma oma tuleviku?",      "Laske meie meeskonnal juhatada teid täiusliku kinnisvara juurde. Võtke meiega ühendust."),
+                (Language.Ru, "Готовы найти своё будущее?",       "Позвольте нашей команде помочь вам найти идеальную недвижимость. Мы будем рады вас услышать."),
+            }),
+            ("team.hero", new[]
+            {
+                (Language.En, "Our Team",             "The experts behind Estonia's most exclusive properties."),
+                (Language.Et, "Meie meeskond",        "Eksperdid Eesti eksklusiivsema kinnisvara taga."),
+                (Language.Ru, "Наша команда",         "Эксперты, стоящие за самой эксклюзивной недвижимостью Эстонии."),
+            }),
+            ("careers.hero", new[]
+            {
+                (Language.En, "Join Our Team",        "Build your career at Estonia's leading luxury real estate brand."),
+                (Language.Et, "Liitu meie meeskonnaga", "Ehita oma karjäär Eesti juhtiva luksuskinnisvara brändi juures."),
+                (Language.Ru, "Присоединяйтесь к нашей команде", "Постройте карьеру в ведущем бренде элитной недвижимости Эстонии."),
+            }),
+            ("services.hero", new[]
+            {
+                (Language.En, "Our Services",         "Comprehensive real estate solutions tailored to your needs."),
+                (Language.Et, "Meie teenused",        "Terviklikud kinnisvaralahendused, kohandatud teie vajadustele."),
+                (Language.Ru, "Наши услуги",          "Комплексные решения в сфере недвижимости, адаптированные под ваши потребности."),
+            }),
+            ("contact.hero", new[]
+            {
+                (Language.En, "Get in Touch",         "We'd love to hear from you. Reach out and let's start a conversation."),
+                (Language.Et, "Võtke meiega ühendust", "Meil oleks hea meel teist kuulda. Kirjutage meile ja alustame vestlust."),
+                (Language.Ru, "Свяжитесь с нами",    "Мы будем рады вас услышать. Напишите нам, и давайте начнём разговор."),
+            }),
+        };
+
+        foreach (var (key, trans) in extras)
+        {
+            if (await _db.PageContents.AnyAsync(p => p.PageKey == key))
+                continue;
+
+            var pc = new PageContent { PageKey = key };
+            pc.Translations.AddRange(trans.Select(t => new PageContentTranslation
+            {
+                Language = t.lang,
+                Title    = t.title,
+                Body     = t.body,
+            }));
+            _db.PageContents.Add(pc);
+        }
+
+        await _db.SaveChangesAsync();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
